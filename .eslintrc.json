@@ -1,0 +1,19 @@
+{
+  "extends": ["eslint:recommended"],
+  "root": true,
+  "env": {
+    "node": true,
+    "mocha": true
+  },
+  "globals": {
+    "web3": true,
+    "artifacts": true,
+    "contract": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2017
+  },
+  "rules": {
+    "quotes": ["error", "single"]
+  }
+}
