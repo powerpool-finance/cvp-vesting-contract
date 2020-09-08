@@ -43,7 +43,7 @@ const config = {
   solc: {
     /* https://buidler.dev/buidler-evm/#solidity-optimizer-support */
     optimizer: {
-      enabled: false,
+      enabled: true,
       runs: 200,
     },
     version: '0.6.12',
