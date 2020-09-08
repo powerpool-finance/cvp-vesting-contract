@@ -14,7 +14,7 @@ interface ICRV {
   function delegate(address delegatee) external;
 }
 
-interface CompInterface {
+interface CvpInterface {
   function getPriorVotes(address account, uint256 blockNumber) external view returns (uint96);
 }
 
@@ -22,7 +22,7 @@ interface CompInterface {
  * @title PowerPool Vesting Contract
  * @author PowerPool
  */
-contract PPVesting is CompInterface {
+contract PPVesting is CvpInterface {
   using SafeMath for uint256;
 
   /// @notice Emitted when an owner delegates all the contract voting power to a particular address
@@ -152,12 +152,12 @@ contract PPVesting is CompInterface {
 
   /**
    * @notice Provides information about a member unclaimed balance in order to use it in voting contract
-   * @dev Behaves like a COMP delegated balance, but with a member unclaimed balance
+   * @dev Behaves like a CVP delegated balance, but with a member unclaimed balance
    * @dev Block number must be a finalized block or else this function will revert to prevent misinformation
    * @dev Block number must be greater than the start block number or else this function
    *      will revert to prevent misinformation
    * @dev Returns 0 for non-members
-   * @dev This method is a copy from COMP token with changes marked with XXX
+   * @dev This method is a copy from CVP token with changes marked with XXX
    * @param account The address of the member to check
    * @param blockNumber The block number to get the vote balance at
    * @return The number of votes the account had as of the given block
@@ -378,7 +378,7 @@ contract PPVesting is CompInterface {
     _writeCheckpoint(_member, dstRepNum, dstRepOld, dstRepNew);
   }
 
-  /// @dev A copy from COMP token, only the event name changed
+  /// @dev A copy from CVP token, only the event name changed
   function _writeCheckpoint(
     address delegatee,
     uint32 nCheckpoints,
@@ -397,19 +397,19 @@ contract PPVesting is CompInterface {
     emit UnclaimedBalanceChanged(delegatee, oldVotes, newVotes);
   }
 
-  /// @dev The exact copy from COMP token
+  /// @dev The exact copy from CVP token
   function safe32(uint256 n, string memory errorMessage) internal pure returns (uint32) {
     require(n < 2**32, errorMessage);
     return uint32(n);
   }
 
-  /// @dev The exact copy from COMP token
+  /// @dev The exact copy from CVP token
   function safe96(uint256 n, string memory errorMessage) internal pure returns (uint96) {
     require(n < 2**96, errorMessage);
     return uint96(n);
   }
 
-  /// @dev The exact copy from COMP token
+  /// @dev The exact copy from CVP token
   function sub96(
     uint96 a,
     uint96 b,
@@ -419,7 +419,7 @@ contract PPVesting is CompInterface {
     return a - b;
   }
 
-  /// @dev The exact copy from COMP token
+  /// @dev The exact copy from CVP token
   function add96(
     uint96 a,
     uint96 b,
