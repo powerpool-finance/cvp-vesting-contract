@@ -1,6 +1,6 @@
 {
   "name": "@powerpool/cvp-vesting-contract",
-  "description": "To be used when building a new solidity project from scratch",
+  "description": "Smart contract provides a temporary lock and following it vesting for the CVP ERC20 tokens received by participants in the Beta and Gamma testing rounds of PowerPool",
   "version": "1.0.0",
   "author": {
     "name": "PowerPool",
