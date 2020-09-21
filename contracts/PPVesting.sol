@@ -313,8 +313,7 @@ contract PPVesting is CvpInterface {
    * @param _to address to withdraw ERC20 tokens to
    */
   function withdraw(address _to) external {
-    address msgSender = msg.sender;
-    Member storage member = members[msgSender];
+    Member storage member = members[msg.sender];
     require(member.active == true, "PPVesting::withdraw: User not active");
 
     uint256 bigAmount = availableToWithdrawFor(member.alreadyClaimed);
@@ -326,9 +325,9 @@ contract PPVesting is CvpInterface {
     member.alreadyClaimed = newAlreadyClaimed;
 
     // Cache unclaimed member balance
-    _subUnclaimedCache(msgSender, amount);
+    _subUnclaimedCache(msg.sender, amount);
 
-    emit Withdraw(msgSender, _to, amount, newAlreadyClaimed);
+    emit Withdraw(msg.sender, _to, amount, newAlreadyClaimed);
 
     IERC20(token).transfer(_to, bigAmount);
   }
