@@ -168,7 +168,6 @@ contract PPVesting is CvpInterface {
 
     uint32 nCheckpoints = numCheckpoints[account];
 
-    // >>> NEW:
     // Not a member
     if (members[account].active == false) {
       return 0;
@@ -183,21 +182,6 @@ contract PPVesting is CvpInterface {
     if (checkpoints[account][nCheckpoints - 1].fromBlock <= blockNumber) {
       return checkpoints[account][nCheckpoints - 1].votes;
     }
-
-    // ||| ORIGINAL:
-    // if (nCheckpoints == 0) {
-    //    return 0;
-    // }
-    // // First check most recent balance
-    // if (checkpoints[account][nCheckpoints - 1].fromBlock <= blockNumber) {
-    //   return checkpoints[account][nCheckpoints - 1].votes;
-    // }
-    //
-    // // Next check implicit zero balance
-    // if (checkpoints[account][0].fromBlock > blockNumber) {
-    //   return 0;
-    // }
-    // <<< END
 
     uint32 lower = 0;
     uint32 upper = nCheckpoints - 1;
