@@ -7,6 +7,7 @@ Smart contract provides a temporary lock and following it vesting for the CVP ER
 More details in 👉 [Specification](https://github.com/powerpool-finance/powerpool-docs/blob/master/specifications/ppVesting.md).
 
 ✅ **Security review status: Audited**
+
 More details in 👉 [Report](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vesting-security.pdf).
 
 ## Testing and Development
