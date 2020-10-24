@@ -15,14 +15,14 @@ function ether(value) {
 ERC20.numberFormat = 'String';
 PPVesting.numberFormat = 'String';
 
+// NOTICE: all durations are represented in blocks
 contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, member3, alice, bob]) {
   let vesting;
-  let startBlock;
-  let startBlockInt;
-  let endBlock;
-  let endBlockInt;
-  let durationInBlocks;
-  let durationInBlocksInt;
+  let startT;
+  let endT;
+  let durationT;
+  let startV;
+  let durationV;
   let erc20;
   let currentBlock;
 
@@ -34,20 +34,21 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
     const amountPerMember = ether('2500');
     currentBlock = await time.latestBlock();
 
-    startBlockInt = parseInt(currentBlock) + 5;
-    startBlock = String(parseInt(currentBlock) + 5);
+    startV = parseInt(currentBlock) + 5;
+    durationV = 10;
 
-    durationInBlocksInt = 5;
-    durationInBlocks = String('5');
+    startT = parseInt(currentBlock) + 10;
+    durationT = 5;
 
-    endBlockInt = startBlockInt + durationInBlocksInt;
-    endBlock = String(endBlock);
+    endT = startT + durationT;
 
     vesting = await PPVesting.new(
       owner,
       erc20.address,
-      startBlock,
-      durationInBlocks,
+      startV,
+      durationV,
+      startT,
+      durationT,
       [member1, member2, member3],
       amountPerMember,
     );
@@ -55,271 +56,396 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
     await erc20.transfer(vesting.address, ether(3000), { from: owner });
   });
 
-  describe('withdrawal', () => {
-    it('should allow a gradual withdrawal each block', async function () {
+  describe('claimTokens', () => {
+    it('should allow a gradual token/votes claims each block', async function () {
       // Step #0
       expect(await erc20.balanceOf(member1)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
       await expect(vesting.getPriorVotes(member1, currentBlock)).to.be.revertedWith(
-        "PPVesting::getPriorVotes: Can't be before/equal the startBlock",
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
       );
-
-      await time.advanceBlockTo(startBlockInt);
-      expect(await vesting.hasStarted()).to.be.true;
 
       // Step #1
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt);
-      expect(await erc20.balanceOf(alice)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
-      await expect(vesting.getPriorVotes(member1, startBlock)).to.be.revertedWith(
-        'PPVesting::getPriorVotes: Not yet determined',
-      );
+      await time.advanceBlockTo(startV);
+      expect(await vesting.voteVestingStarted()).to.be.true;
 
-      // will mine block #8
-      await vesting.withdraw(alice, { from: member1 });
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 1);
+
+      await expect(vesting.getPriorVotes(member1, startV - 1)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
 
       // Step #2
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 1);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
-      const checkpoint = await vesting.checkpoints(member1, 0);
-      expect(checkpoint.fromBlock).to.be.equal(String(startBlockInt + 1));
-      expect(checkpoint.votes).to.be.equal(ether(2000));
-      await expect(vesting.getPriorVotes(member1, startBlock)).to.be.revertedWith(
-        "PPVesting::getPriorVotes: Can't be before/equal the startBlock",
-      );
-      await expect(vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.revertedWith(
-        'PPVesting::getPriorVotes: Not yet determined',
-      );
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 2);
 
-      await vesting.withdraw(alice, { from: member1 });
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
 
       // Step #3
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 2);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2000));
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 3);
 
-      await vesting.withdraw(alice, { from: member1 });
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
 
       // Step #4
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 3);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1500));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2000));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(1500));
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 4);
 
-      await vesting.withdraw(alice, { from: member1 });
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
 
       // Step #5
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 4);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2000));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2000));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(1500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(1000));
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 5);
 
-      await vesting.withdraw(alice, { from: member1 });
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(1000));
+      await expect(vesting.getPriorVotes(member1, startT)).to.be.revertedWith(
+        'PPVesting::getPriorVotes: Not yet determined',
+      );
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT);
+      expect(await erc20.balanceOf(alice)).to.be.equal('0');
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('5');
 
       // Step #6
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 5);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
-      await expect(vesting.getPriorVotes(member1, startBlock)).to.be.revertedWith(
-        "PPVesting::getPriorVotes: Can't be before/equal the startBlock",
-      );
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2000));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(1500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(1000));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 4)).to.be.equal(ether(500));
+      await vesting.claimTokens(alice, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 6); // #11
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 1);
 
-      await expect(vesting.withdraw(alice, { from: member1 })).to.revertedWith(
-        'PPVesting::withdraw: Nothing to withdraw',
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
       );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(1250));
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(500));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('6');
+      // TODO: move checkpoint
+      const checkpoint = await vesting.checkpoints(member1, 0);
+      expect(checkpoint.fromBlock).to.be.equal(String(startV + 1));
+      expect(checkpoint.votes).to.be.equal(ether(250));
 
-      // Step #6
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 6);
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 5)).to.be.equal('0');
+      // Step #7
+      await vesting.claimTokens(alice, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 7); // #12
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 2);
+
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 1000));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1000));
+
+      // Step #8
+      await vesting.claimTokens(alice, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 8); // #13
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 3);
+
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 1500));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(750));
+
+      // Step #9
+      await vesting.claimTokens(alice, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 9); // #14
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 4);
+
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 2000));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(500));
+
+      // Step #10
+      await vesting.claimTokens(alice, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 10); // #15
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 5);
+
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 2500));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(250));
+
+      // Step #11
+      await expect(vesting.claimTokens(alice, { from: member1 })).to.revertedWith(
+        'PPVesting::claimTokens: Nothing to claim',
+      );
+      expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startT + 5)).to.be.equal(ether(0));
     });
 
-    it('should allow withdrawing at the pre-last block', async function () {
+    it('should allow withdrawing tokens at the pre-last block', async function () {
       // Step #0
       expect(await erc20.balanceOf(member1)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
       await expect(vesting.getPriorVotes(member1, currentBlock)).to.be.revertedWith(
-        "PPVesting::getPriorVotes: Can't be before/equal the startBlock",
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
       );
 
-      // will
-      await time.advanceBlockTo(startBlockInt);
-      expect(await vesting.hasStarted()).to.be.true;
+      await time.advanceBlockTo(startT - 1);
 
       // Step #1
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt);
+      await vesting.claimVotes(member1);
+
+      expect(await vesting.voteVestingStarted()).to.be.true;
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 5);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT);
+
       expect(await erc20.balanceOf(alice)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
-      await expect(vesting.getPriorVotes(member1, startBlock)).to.be.revertedWith(
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      await expect(vesting.getPriorVotes(member1, startT)).to.be.revertedWith(
         'PPVesting::getPriorVotes: Not yet determined',
       );
-
-      await time.advanceBlockTo(endBlockInt - 1);
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
 
       // Step #2
-      expect((await time.latestBlock()).toNumber()).to.be.equal(endBlockInt - 1);
-      expect(await erc20.balanceOf(alice)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(2000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(2500));
+      await time.advanceBlockTo(endT - 1);
 
-      await vesting.withdraw(alice, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT - 1);
+      expect(await erc20.balanceOf(alice)).to.be.equal('0');
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(2000));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(2500));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(1250));
 
       // Step #3
-      expect((await time.latestBlock()).toNumber()).to.be.equal(endBlockInt);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether('0'));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 4)).to.be.equal(ether(2500));
+      await vesting.claimTokens(alice, { from: member1 });
 
-      await expect(vesting.withdraw(alice, { from: member1 })).to.be.revertedWith(
-        'PPVesting::withdraw: Nothing to withdraw',
-      );
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT);
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether('0'));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(1250));
 
       // Step #4
-      expect((await time.latestBlock()).toNumber()).to.be.equal(endBlockInt + 1);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether('0'));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 4)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 5)).to.be.equal(ether(0));
-
-      await expect(vesting.withdraw(alice, { from: member1 })).to.be.revertedWith(
-        'PPVesting::withdraw: Nothing to withdraw',
+      await expect(vesting.claimTokens(alice, { from: member1 })).to.be.revertedWith(
+        'PPVesting::claimTokens: Nothing to claim',
       );
 
-      // Step #5
-      expect((await time.latestBlock()).toNumber()).to.be.equal(endBlockInt + 2);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT + 1);
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether('0'));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 4)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, endBlockInt)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, endBlockInt + 1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether('0'));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 5)).to.be.equal(ether(0));
+
+      // Step #5
+      await expect(vesting.claimTokens(alice, { from: member1 })).to.be.revertedWith(
+        'PPVesting::claimTokens: Nothing to claim',
+      );
+
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT + 2);
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether('0'));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member1, startT + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 6)).to.be.equal(ether(0));
     });
   });
 
-  describe('transfer/withdrawal', () => {
-    it('should allow transferring after startBlock', async function () {
+  describe('transfer/claimTokens', () => {
+    it('should allow transferring after startV', async function () {
       // Step #0
       expect(await erc20.balanceOf(member1)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
       await expect(vesting.getPriorVotes(member1, currentBlock)).to.be.revertedWith(
-        "PPVesting::getPriorVotes: Can't be before/equal the startBlock",
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
       );
 
-      await time.advanceBlockTo(startBlockInt);
-      expect(await vesting.hasStarted()).to.be.true;
+      await time.advanceBlockTo(startV);
+
+      await vesting.claimVotes(member1);
+      await vesting.claimVotes(member1);
+
+      await time.advanceBlockTo(startT);
 
       // Step #1
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT);
       expect(await erc20.balanceOf(alice)).to.be.equal('0');
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
-      await expect(vesting.getPriorVotes(member1, startBlock)).to.be.revertedWith(
+      expect(await vesting.availableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.availableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('2');
+
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(500));
+      await expect(vesting.getPriorVotes(member1, startT)).to.be.revertedWith(
         'PPVesting::getPriorVotes: Not yet determined',
       );
 
-      await vesting.withdraw(alice, { from: member1 });
-      await vesting.withdraw(alice, { from: member1 });
+      // Step #2
+      await vesting.claimVotes(member1);
+      await vesting.claimTokens(alice, { from: member1 });
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('4');
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 6)).to.be.equal(ether(1500));
+      await expect(vesting.getPriorVotes(member1, startV + 7)).to.be.revertedWith(
+        'PPVesting::getPriorVotes: Not yet determined',
+      );
 
-      // Step #1
+      // Step #2
       await vesting.transfer(bob, { from: member1 });
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 3);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 3);
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
 
       const member1Details = await vesting.members(member1);
       expect(member1Details.active).to.be.false;
       expect(member1Details.transferred).to.be.true;
-      expect(member1Details.alreadyClaimed).to.be.equal(ether(0));
+      expect(member1Details.alreadyClaimedVotes).to.be.equal(ether(0));
+      expect(member1Details.alreadyClaimedTokens).to.be.equal(ether(0));
 
-      const aliceDetails = await vesting.members(bob);
-      expect(aliceDetails.active).to.be.true;
-      expect(aliceDetails.transferred).to.be.false;
-      expect(aliceDetails.alreadyClaimed).to.be.equal(ether(1000));
+      const bobDetails = await vesting.members(bob);
+      expect(bobDetails.active).to.be.true;
+      expect(bobDetails.transferred).to.be.false;
+      expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(1750));
+      expect(bobDetails.alreadyClaimedTokens).to.be.equal(ether(1000));
 
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 2)).to.be.equal(ether(0));
-      await expect(vesting.withdraw(alice, { from: member1 })).to.be.revertedWith(
-        'PPVesting::withdraw: User not active',
-      );
-
-      // Step #2
-      expect((await time.latestBlock()).toNumber()).to.be.equal(startBlockInt + 4);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 3)).to.be.equal(ether(1500));
-
-      await vesting.withdraw(alice, { from: bob });
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT + 2)).to.be.equal(ether(0));
 
       // Step #3
-      expect((await time.latestBlock()).toNumber()).to.be.equal(endBlockInt);
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 4)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 3)).to.be.equal(ether(1500));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 4)).to.be.equal(ether(1500));
-
-      await expect(vesting.withdraw(alice, { from: bob })).to.be.revertedWith(
-        'PPVesting::withdraw: Nothing to withdraw',
+      await expect(vesting.claimTokens(alice, { from: member1 })).to.be.revertedWith(
+        'PPVesting::claimTokens: User not active',
       );
 
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 4);
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT + 3)).to.be.equal(ether(750));
+
       // Step #4
-      expect((await time.latestBlock()).toNumber()).to.be.equal(endBlockInt + 1);
+      await vesting.claimTokens(alice, { from: bob });
+
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT);
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 3)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, startBlockInt + 4)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member1, endBlockInt)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 1)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 2)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 3)).to.be.equal(ether(1500));
-      expect(await vesting.getPriorVotes(bob, startBlockInt + 4)).to.be.equal(ether(1500));
-      expect(await vesting.getPriorVotes(bob, endBlockInt)).to.be.equal(ether(0));
+
+      // Step #5
+      await expect(vesting.claimTokens(alice, { from: bob })).to.be.revertedWith(
+        'PPVesting::claimTokens: Nothing to claim',
+      );
+
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT + 1);
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, endT)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, startT + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(bob, startT + 4)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(bob, endT)).to.be.equal(ether(0));
     });
   });
 });
