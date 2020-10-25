@@ -371,7 +371,9 @@ contract PPVesting is CvpInterface {
 
   function delegateVotes(address _to) external {
     Member memory member = members[msg.sender];
+    require(_to != address(0), "PPVesting::delegateVotes: Can't delegate to 0 address");
     require(member.active == true, "PPVesting::delegateVotes: User not active");
+    require(members[_to].active == true, "PPVesting::delegateVotes: _to user not active");
 
     address currentDelegate = _getVoteUser(msg.sender);
     require(_to != currentDelegate, "PPVesting::delegateVotes: Already delegated to this address");
@@ -436,23 +438,27 @@ contract PPVesting is CvpInterface {
     members[msg.sender] = Member({ active: false, transferred: true, alreadyClaimedVotes: 0, alreadyClaimedTokens: 0 });
     members[_to] = Member({ active: true, transferred: false, alreadyClaimedVotes: alreadyClaimedVotes, alreadyClaimedTokens: alreadyClaimedTokens });
 
-    voteDelegations[_to] = voteDelegations[msg.sender];
-    delete voteDelegations[msg.sender];
+    address currentDelegate = voteDelegations[msg.sender];
 
-    uint32 startBlockNumber = safe32(startT, "PPVesting::transfer: Block number exceeds 32 bits");
+    uint32 startBlockNumber = safe32(startV, "PPVesting::transfer: Block number exceeds 32 bits");
     uint32 currentBlockNumber = safe32(block.number, "PPVesting::transfer: Block number exceeds 32 bits");
 
     checkpoints[_to][0] = Checkpoint(startBlockNumber, 0);
-    checkpoints[_to][1] = Checkpoint(
-      currentBlockNumber,
-      sub96(amountPerMember, alreadyClaimedVotes, "PPVesting::transfer: To 1st checkpoint overflow")
-    );
-    numCheckpoints[_to] += 2;
+    if (currentDelegate == address(0)) {
+      uint96 adjustedVotes = sub96(from.alreadyClaimedVotes, from.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
+      _subDelegatedVotesCache(msg.sender, adjustedVotes);
+      checkpoints[_to][1] = Checkpoint(currentBlockNumber, adjustedVotes);
+      numCheckpoints[_to] += 2;
+    } else {
+      numCheckpoints[_to] += 1;
+    }
 
-    _subDelegatedVotesCache(
-      msg.sender,
-      sub96(amountPerMember, alreadyClaimedVotes, "PPVesting::transfer: Unclaimed msgSender overflow")
-    );
+    voteDelegations[_to] = voteDelegations[msg.sender];
+    delete voteDelegations[msg.sender];
+
+    Member memory toMember = members[_to];
+    uint256 votes = availableVotes(toMember.alreadyClaimedVotes);
+    _claimVotes(_to, toMember, votes);
 
     emit Transfer(msg.sender, _to, startBlockNumber, alreadyClaimedVotes, alreadyClaimedTokens);
   }
