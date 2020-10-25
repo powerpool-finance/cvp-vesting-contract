@@ -11,7 +11,7 @@
     "contract": true
   },
   "parserOptions": {
-    "ecmaVersion": 2017
+    "ecmaVersion": 2020
   },
   "rules": {
     "quotes": ["error", "single", "avoid-escape"]

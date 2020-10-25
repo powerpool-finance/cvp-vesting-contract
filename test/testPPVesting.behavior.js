@@ -1,5 +1,6 @@
 const { ether: etherBN, time } = require('@openzeppelin/test-helpers');
 const { solidity } = require('ethereum-waffle');
+const { promisify } = require('util');
 
 const chai = require('chai');
 const PPVesting = artifacts.require('PPVesting');
@@ -28,7 +29,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
 
   beforeEach(async function () {
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
-    await erc20.mint(owner, ether(5000));
+    await erc20.mint(owner, ether(50000));
 
     // Setup...
     const amountPerMember = ether('2500');
@@ -53,7 +54,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       amountPerMember,
     );
 
-    await erc20.transfer(vesting.address, ether(3000), { from: owner });
+    await erc20.transfer(vesting.address, ether(30000), { from: owner });
   });
 
   describe('claimTokens', () => {
@@ -448,4 +449,241 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect(await vesting.getPriorVotes(bob, endT)).to.be.equal(ether(0));
     });
   });
+
+  describe('delegation', () => {
+    it('should allow delegation', async function() {
+      // Step #1
+      await time.advanceBlockTo(startV);
+      expect(await vesting.voteVestingStarted()).to.be.true;
+
+      // Step #2
+      await vesting.claimVotes(member1);
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 2);
+
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+
+      // Step #3
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 3);
+
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+
+      // Step #4
+      await vesting.delegateVotes(member2, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 4);
+
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+
+      // Step #4
+      await vesting.claimVotes(member1);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 5);
+
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 4)).to.be.equal(ether(750));
+
+      // Step #5
+      await vesting.claimVotes(member3);
+      await vesting.delegateVotes(member2, { from: member3});
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 7);
+
+      await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
+        "PPVesting::getPriorVotes: Can't be before/equal the startV",
+      );
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 6)).to.be.equal(ether(0));
+
+      expect(await vesting.getPriorVotes(member2, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 4)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member2, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 6)).to.be.equal(ether(1250));
+
+      expect(await vesting.getPriorVotes(member3, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 6)).to.be.equal(ether(1500));
+
+      // Step #6
+      await vesting.claimTokens(member2, { from: member2 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 8);
+
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 6)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 7)).to.be.equal(ether(0));
+
+      expect(await vesting.getPriorVotes(member2, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 4)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member2, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 6)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 7)).to.be.equal(ether(2750));
+
+      expect(await vesting.getPriorVotes(member3, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 6)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member3, startV + 7)).to.be.equal(ether(0));
+
+      // Step #7
+      await vesting.claimTokens(member1, { from: member1 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 9);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 4);
+
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 6)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 7)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 8)).to.be.equal(ether(0));
+
+      expect(await vesting.getPriorVotes(member2, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 4)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member2, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 6)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 7)).to.be.equal(ether(2750));
+      expect(await vesting.getPriorVotes(member2, startV + 8)).to.be.equal(ether(3250));
+
+      expect(await vesting.getPriorVotes(member3, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 6)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member3, startV + 7)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 8)).to.be.equal(ether(0));
+
+
+      // Step #7
+      await vesting.delegateVotes(member1, { from: member2 });
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 10);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT);
+
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
+      expect(await vesting.getPriorVotes(member1, startV + 2)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 3)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 6)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 7)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 8)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 9)).to.be.equal(ether(0));
+
+      expect(await vesting.getPriorVotes(member2, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, startV + 4)).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member2, startV + 5)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 6)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 7)).to.be.equal(ether(2750));
+      expect(await vesting.getPriorVotes(member2, startV + 8)).to.be.equal(ether(3250));
+      expect(await vesting.getPriorVotes(member2, startV + 9)).to.be.equal(ether(2250));
+
+      expect(await vesting.getPriorVotes(member3, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 4)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 5)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 6)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member3, startV + 7)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 9)).to.be.equal(ether(0));
+
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(2250));
+      expect((await vesting.members(member2)).alreadyClaimedVotes).to.be.equal(ether(2000));
+      expect((await vesting.members(member3)).alreadyClaimedVotes).to.be.equal(ether(1500));
+      expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(ether(2000));
+      expect((await vesting.members(member2)).alreadyClaimedTokens).to.be.equal(ether(1500));
+      expect((await vesting.members(member3)).alreadyClaimedTokens).to.be.equal(ether(0));
+      expect(await erc20.balanceOf(member1)).to.be.equal(ether(2000));
+      expect(await erc20.balanceOf(member2)).to.be.equal(ether(1500));
+      expect(await erc20.balanceOf(member3)).to.be.equal(ether(0));
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      expect(await vesting.voteDelegations(member2)).to.be.equal(member1);
+      expect(await vesting.voteDelegations(member3)).to.be.equal(member2);
+
+      // Step #8
+      await vesting.claimTokens(member1, { from: member1 });
+      await vesting.claimTokens(member2, { from: member2 });
+      await vesting.claimTokens(member3, { from: member3 });
+      await expect(vesting.claimVotes(member1, { from: member3 }))
+        .to.be.revertedWith('PPVesting::claimVotes: Nothing to claim');
+
+      expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 14);
+      expect((await time.latestBlock()).toNumber()).to.be.equal(endT + 4);
+
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(2500));
+      expect((await vesting.members(member2)).alreadyClaimedVotes).to.be.equal(ether(2500));
+      expect((await vesting.members(member3)).alreadyClaimedVotes).to.be.equal(ether(2500));
+      expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(ether(2500));
+      expect((await vesting.members(member2)).alreadyClaimedTokens).to.be.equal(ether(2500));
+      expect((await vesting.members(member3)).alreadyClaimedTokens).to.be.equal(ether(2500));
+      expect(await erc20.balanceOf(member1)).to.be.equal(ether(2500));
+      expect(await erc20.balanceOf(member2)).to.be.equal(ether(2500));
+      expect(await erc20.balanceOf(member3)).to.be.equal(ether(2500));
+
+      expect(await vesting.getPriorVotes(member1, startV + 6)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 7)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 8)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 9)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 10)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 11)).to.be.equal(ether(500));
+      expect(await vesting.getPriorVotes(member1, startV + 12)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 13)).to.be.equal(ether(0));
+
+      expect(await vesting.getPriorVotes(member2, startV + 6)).to.be.equal(ether(1250));
+      expect(await vesting.getPriorVotes(member2, startV + 7)).to.be.equal(ether(2750));
+      expect(await vesting.getPriorVotes(member2, startV + 8)).to.be.equal(ether(3250));
+      expect(await vesting.getPriorVotes(member2, startV + 9)).to.be.equal(ether(2250));
+      expect(await vesting.getPriorVotes(member2, startV + 10)).to.be.equal(ether(1750));
+      expect(await vesting.getPriorVotes(member2, startV + 11)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member2, startV + 12)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member2, startV + 13)).to.be.equal(ether(0));
+
+      expect(await vesting.getPriorVotes(member3, startV + 6)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member3, startV + 7)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 8)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 9)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 10)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 11)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 12)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member3, startV + 13)).to.be.equal(ether(0));
+    });
+  })
 });
