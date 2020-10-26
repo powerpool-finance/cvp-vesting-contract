@@ -64,17 +64,22 @@ contract PPVesting is CvpInterface {
   /// @notice ERC20 token address
   address public immutable token;
 
+  /// @notice Start block number for vote vesting calculations
   uint256 public immutable startV;
+
+  /// @notice Duration of the vote vesting in blocks
   uint256 public immutable durationV;
+
+  /// @notice End vote vesting block number, used only from UI
   uint256 public immutable endV;
 
-  /// @notice Start block number for vesting calculations
+  /// @notice Start block number for token vesting calculations
   uint256 public immutable startT;
 
-  /// @notice Duration of the vesting in blocks
+  /// @notice Duration of the token vesting in blocks
   uint256 public immutable durationT;
 
-  /// @notice End block number, used only from UI
+  /// @notice End token block number, used only from UI
   uint256 public immutable endT;
 
   /// @notice Number of the vesting contract members, used only from UI
@@ -92,6 +97,7 @@ contract PPVesting is CvpInterface {
   /// @notice The number of checkpoints for each member
   mapping(address => uint32) public numCheckpoints;
 
+  /// @notice Vote delegations
   mapping(address => address) public voteDelegations;
 
   modifier onlyOwner() {
@@ -154,36 +160,57 @@ contract PPVesting is CvpInterface {
   }
 
   /**
-   * @notice Checks whether the vesting period has started or not
-   * @return true If the vesting period has started
+   * @notice Checks whether the vote vesting period has started or not
+   * @return true If the vote vesting period has started
+   */
+  function voteVestingStarted() external view returns (bool) {
+    return block.number >= startV;
+  }
+
+  /**
+   * @notice Checks whether the vote vesting period has ended or not
+   * @return true If the vote vesting period has ended
+   */
+  function voteVestingEnded() external view returns (bool) {
+    return block.number >= endV;
+  }
+
+  /**
+   * @notice Checks whether the token vesting period has started or not
+   * @return true If the token vesting period has started
    */
   function tokenVestingStarted() external view returns (bool) {
     return block.number >= startT;
   }
 
   /**
-   * @notice Checks whether the vesting period has ended or not
-   * @return true If the vesting period has ended
+   * @notice Checks whether the token vesting period has ended or not
+   * @return true If the token vesting period has ended
    */
   function tokenVestingEnded() external view returns (bool) {
     return block.number >= endT;
   }
 
-  function voteVestingStarted() external view returns (bool) {
-    return block.number >= startV;
+  function getVoteUser(address _voteHolder) public view returns (address) {
+    address currentDelegate = voteDelegations[_voteHolder];
+    if (currentDelegate == address(0)) {
+      return _voteHolder;
+    }
+    return currentDelegate;
   }
 
-  function voteVestingEnded() external view returns (bool) {
-    return block.number >= endV;
+  function getCurrentVotes(address _member) public view returns (uint256) {
+    uint32 dstRepNum = numCheckpoints[_member];
+    return dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
   }
 
   /**
-   * @notice Provides information about a member unclaimed balance in order to use it in voting contract
+   * @notice Provides information about a member already claimed votes
    * @dev Behaves like a CVP delegated balance, but with a member unclaimed balance
    * @dev Block number must be a finalized block or else this function will revert to prevent misinformation
-   * @dev Block number must be greater than the start block number or else this function
+   * @dev Block number must be greater than the vote start block number or else this function
    *      will revert to prevent misinformation
-   * @dev Returns 0 for non-member addresses, event for previously valid ones
+   * @dev Returns 0 for non-member addresses, even for previously valid ones
    * @dev This method is a copy from CVP token with several modifications
    * @param account The address of the member to check
    * @param blockNumber The block number to get the vote balance at
@@ -245,10 +272,10 @@ contract PPVesting is CvpInterface {
   }
 
   /**
-   * @notice Returns available token amount for withdrawal by a given member in the current block
+   * @notice Returns available token amount for a claim by a given member in the current block
    *         based on the current contract values
    * @param _member The member address to return available balance for
-   * @return The available amount for withdrawal in the current block
+   * @return The available amount for a claim in the current block
    */
   function availableTokensForMember(address _member) external view returns (uint256) {
     Member storage member = members[_member];
@@ -260,16 +287,38 @@ contract PPVesting is CvpInterface {
   }
 
   /**
-   * @notice Returns available amount for withdrawal based on the current contract values
+   * @notice Returns available vote amount for a claim by a given member in the current block
+   *         based on the current contract values
+   * @param _member The member address to return available balance for
+   * @return The available amount for a claim in the current block
+   */
+  function availableVotesForMember(address _member) external view returns (uint256) {
+    Member storage member = members[_member];
+    if (member.active == false) {
+      return 0;
+    }
+
+    return availableVotes(member.alreadyClaimedVotes);
+  }
+
+  /**
+   * @notice Returns available token amount for a claim based on the current contract values
    *         and an already claimed amount input
    * @dev Will return amountPerMember for non-members, so an external check is required for this case
    * @param _alreadyClaimed amount
-   * @return The available amount for withdrawal
+   * @return The available amount for claim
    */
   function availableTokens(uint256 _alreadyClaimed) public view returns (uint256) {
     return available(block.number, startT, amountPerMember, durationT, _alreadyClaimed);
   }
 
+  /**
+   * @notice Returns available vote amount for claim based on the current contract values
+   *         and an already claimed amount input
+   * @dev Will return amountPerMember for non-members, so an external check is required for this case
+   * @param _alreadyClaimed amount
+   * @return The available amount for claim
+   */
   function availableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
     return available(block.number, startV, amountPerMember, durationV, _alreadyClaimed);
   }
@@ -351,46 +400,26 @@ contract PPVesting is CvpInterface {
       newAlreadyClaimedVotes = _member.alreadyClaimedVotes;
     }
 
-    address delegate = _getVoteUser(_memberAddress);
+    address delegate = getVoteUser(_memberAddress);
 
     // Step #2. Get the accrued votes value
-    uint96 lastMemberAdjustedVotes = sub96(_member.alreadyClaimedVotes, _member.alreadyClaimedTokens, "PPVesting::claimVotes: LastMemberAdjustedVotes overflow");
+    uint96 lastMemberAdjustedVotes = sub96(
+      _member.alreadyClaimedVotes,
+      _member.alreadyClaimedTokens,
+      "PPVesting::_claimVotes: LastMemberAdjustedVotes overflow"
+    );
 
     // Step #2. Get the adjusted value in relation to the member itself
-    uint96 adjustedVotes = sub96(newAlreadyClaimedVotes, members[_memberAddress].alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
+    uint96 adjustedVotes = sub96(newAlreadyClaimedVotes, members[_memberAddress].alreadyClaimedTokens, "PPVesting::_claimVotes: AdjustedVotes underflow");
 
     // Step #3. Apply the adjusted value in relation to the delegate
     if (adjustedVotes > lastMemberAdjustedVotes) {
-      uint96 diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::claimVotes: AdjustedVotes underflow");
+      uint96 diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::_claimVotes: AdjustedVotes underflow");
       _addDelegatedVotesCache(delegate, diff);
     } else if (lastMemberAdjustedVotes > adjustedVotes) {
-      uint96 diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::claimVotes: AdjustedVotes underflow");
+      uint96 diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::_claimVotes: AdjustedVotes underflow");
       _subDelegatedVotesCache(delegate, diff);
     }
-  }
-
-  function delegateVotes(address _to) external {
-    Member memory member = members[msg.sender];
-    require(_to != address(0), "PPVesting::delegateVotes: Can't delegate to 0 address");
-    require(member.active == true, "PPVesting::delegateVotes: User not active");
-    require(members[_to].active == true, "PPVesting::delegateVotes: _to user not active");
-
-    address currentDelegate = _getVoteUser(msg.sender);
-    require(_to != currentDelegate, "PPVesting::delegateVotes: Already delegated to this address");
-
-    voteDelegations[msg.sender] = _to;
-    uint96 adjustedVotes = sub96(member.alreadyClaimedVotes, member.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
-
-    _subDelegatedVotesCache(currentDelegate, adjustedVotes);
-    _addDelegatedVotesCache(_to, adjustedVotes);
-  }
-
-  function _getVoteUser(address _voteHolder) internal view returns (address) {
-    address currentDelegate = voteDelegations[_voteHolder];
-    if (currentDelegate == address(0)) {
-      return _voteHolder;
-    }
-    return currentDelegate;
   }
 
   /**
@@ -420,7 +449,27 @@ contract PPVesting is CvpInterface {
   }
 
   /**
-   * @notice Transfers a vested right to member funds to another address
+   * @notice Delegates an already claimed votes amount to the given address
+   * @param _to address to delegate votes
+   */
+  function delegateVotes(address _to) external {
+    Member memory member = members[msg.sender];
+    require(_to != address(0), "PPVesting::delegateVotes: Can't delegate to 0 address");
+    require(member.active == true, "PPVesting::delegateVotes: User not active");
+    require(members[_to].active == true, "PPVesting::delegateVotes: _to user not active");
+
+    address currentDelegate = getVoteUser(msg.sender);
+    require(_to != currentDelegate, "PPVesting::delegateVotes: Already delegated to this address");
+
+    voteDelegations[msg.sender] = _to;
+    uint96 adjustedVotes = sub96(member.alreadyClaimedVotes, member.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
+
+    _subDelegatedVotesCache(currentDelegate, adjustedVotes);
+    _addDelegatedVotesCache(_to, adjustedVotes);
+  }
+
+  /**
+   * @notice Transfers a vested rights for a member funds to another address
    * @dev A new member won't have any votes for a period between a start block and a current block
    * @param _to address to transfer a vested right to
    */
@@ -461,11 +510,6 @@ contract PPVesting is CvpInterface {
     _claimVotes(_to, toMember, votes);
 
     emit Transfer(msg.sender, _to, startBlockNumber, alreadyClaimedVotes, alreadyClaimedTokens);
-  }
-
-  function getLastCheckpoint(address _member) public view returns (uint256) {
-    uint32 dstRepNum = numCheckpoints[_member];
-    return dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
   }
 
   function _subDelegatedVotesCache(address _member, uint96 _subAmount) internal {
