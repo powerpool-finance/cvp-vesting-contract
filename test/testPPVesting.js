@@ -18,26 +18,24 @@ PPVesting.numberFormat = 'String';
 
 contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, member4, alice, bob]) {
   let vesting;
-  let startBlock;
-  let startBlockInt;
-  let endBlock;
-  let endBlockInt;
-  let durationInBlocks;
-  let durationInBlocksInt;
+  let startV;
+  let durationV;
+  let startT;
+  let endT;
+  let durationT;
   const amountPerMember = ether('5000');
   let erc20;
 
   beforeEach(async function () {
     const currentBlock = await time.latestBlock();
 
-    startBlockInt = parseInt(currentBlock) + 5;
-    startBlock = String(parseInt(currentBlock) + 5);
+    startV = parseInt(currentBlock) + 5;
+    durationV = 10;
 
-    durationInBlocksInt = 10;
-    durationInBlocks = String(durationInBlocksInt);
+    startT = parseInt(currentBlock) + 10;
+    durationT = 5;
 
-    endBlockInt = startBlockInt + durationInBlocksInt;
-    endBlock = String(endBlock);
+    endT = startT + durationT;
 
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
     await erc20.mint(owner, ether(5000));
@@ -45,8 +43,10 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     vesting = await PPVesting.new(
       owner,
       erc20.address,
-      startBlock,
-      durationInBlocks,
+      startV,
+      durationV,
+      startT,
+      durationT,
       [member1, member2, member3],
       amountPerMember,
     );
@@ -56,20 +56,31 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     it('should assign correct values during initialization', async function () {
       expect(await vesting.owner()).to.equal(owner);
       expect(await vesting.token()).to.equal(erc20.address);
-      expect(await vesting.startBlock()).to.equal(startBlock);
-      expect(await vesting.durationInBlocks()).to.equal(durationInBlocks);
+      expect(await vesting.startV()).to.equal(startV.toString());
+      expect(await vesting.durationV()).to.equal(durationV.toString());
+      expect(await vesting.startT()).to.equal(startT.toString());
+      expect(await vesting.durationT()).to.equal(durationT.toString());
+      expect(await vesting.endT()).to.equal(endT.toString());
       expect(await vesting.amountPerMember()).to.equal(amountPerMember);
       expect(await vesting.memberCount()).to.equal('3');
 
       const res = await vesting.members(member1);
       expect(res.active).to.be.true;
-      expect(res.alreadyClaimed).to.be.equal('0');
+      expect(res.transferred).to.be.false;
+      expect(res.alreadyClaimedVotes).to.be.equal('0');
+      expect(res.alreadyClaimedTokens).to.be.equal('0');
     });
 
-    it('should deny initialization with zero duration', async function () {
+    it('should deny initialization with zero vote vesting duration', async function () {
       await expect(
-        PPVesting.new(owner, erc20.address, startBlock, 0, [member1, member2, member3], amountPerMember),
-      ).to.be.revertedWith('PPVesting: Invalid durationInBlocks');
+        PPVesting.new(owner, erc20.address, startV, 0, startT, 2, [member1, member2, member3], amountPerMember),
+      ).to.be.revertedWith('PPVesting: Invalid durationV');
+    });
+
+    it('should deny initialization with zero token vesting duration', async function () {
+      await expect(
+        PPVesting.new(owner, erc20.address, startV, 2, startT, 0, [member1, member2, member3], amountPerMember),
+      ).to.be.revertedWith('PPVesting: Invalid durationT');
     });
 
     it('should deny initialization with zero owner address', async function () {
@@ -77,8 +88,10 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
         PPVesting.new(
           constants.ZERO_ADDRESS,
           erc20.address,
-          startBlock,
-          durationInBlocks,
+          startV,
+          durationV,
+          startT,
+          durationT,
           [member1, member2, member3],
           amountPerMember,
         ),
@@ -87,13 +100,13 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
     it('should deny initialization with zero owner address', async function () {
       await expect(
-        PPVesting.new(owner, erc20.address, startBlock, durationInBlocks, [member1, member2, member3], 0),
+        PPVesting.new(owner, erc20.address, startV, durationV, startT, durationT, [member1, member2, member3], 0),
       ).to.be.revertedWith('PPVesting: Invalid amount per member');
     });
 
     it('should deny initialization with an empty member list', async function () {
       await expect(
-        PPVesting.new(owner, erc20.address, startBlock, durationInBlocks, [], amountPerMember),
+        PPVesting.new(owner, erc20.address, startV, durationV, startT, durationT, [], amountPerMember),
       ).to.be.revertedWith('PPVesting: Empty member list');
     });
 
@@ -102,8 +115,10 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
         PPVesting.new(
           owner,
           vesting.address,
-          startBlock,
-          durationInBlocks,
+          startV,
+          durationV,
+          startT,
+          durationT,
           [member1, member2, member3],
           amountPerMember,
         ),
@@ -114,7 +129,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
     it('should deny initialization with non-erc20 address', async function () {
       await expect(
-        PPVesting.new(owner, bob, startBlock, durationInBlocks, [member1, member2, member3], amountPerMember),
+        PPVesting.new(owner, bob, startV, durationV, startT, durationT, [member1, member2, member3], amountPerMember),
       ).to.be.revertedWith('Transaction reverted: function call to a non-contract account');
     });
   });
@@ -211,21 +226,21 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should return correct values on 0th block', async function () {
-      await time.advanceBlockTo(startBlock);
+      await time.advanceBlockTo(startT);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawFor(0)).to.be.equal(ether(0));
       expect(await vesting.availableToWithdrawFor(5000)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the first block after the start', async function () {
-      await time.advanceBlockTo(startBlockInt + 1);
+      await time.advanceBlockTo(startT + 1);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawFor(0)).to.be.equal(ether(500));
       expect(await vesting.availableToWithdrawFor(ether(500))).to.be.equal(ether(0));
     });
 
     it('should return correct values on the pre-last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks) - 1);
+      await time.advanceBlockTo(startT + parseInt(durationT) - 1);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.hasEnded()).to.be.false;
       expect(await vesting.availableToWithdrawFor(ether(0))).to.be.equal(ether(4500));
@@ -234,7 +249,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should return correct values on the last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks));
+      await time.advanceBlockTo(startT + parseInt(durationT));
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.hasEnded()).to.be.true;
       expect(await vesting.availableToWithdrawFor(ether(0))).to.be.equal(ether(5000));
@@ -243,7 +258,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should return correct values after the last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks) + 5);
+      await time.advanceBlockTo(startT + parseInt(durationT) + 5);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.hasEnded()).to.be.true;
       expect(await vesting.availableToWithdrawFor(ether(0))).to.be.equal(ether(5000));
@@ -262,21 +277,21 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should return correct values on the first block after the start', async function () {
-      await time.advanceBlockTo(startBlockInt + 1);
+      await time.advanceBlockTo(startT + 1);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(500));
       expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks));
+      await time.advanceBlockTo(startT + parseInt(durationT));
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(5000));
       expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks) + 5);
+      await time.advanceBlockTo(startT + parseInt(durationT) + 5);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(5000));
       expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
@@ -285,7 +300,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
   describe('availableToWithdrawForMemberInTheNextBlock', () => {
     it('should return correct values before the start', async function () {
-      await time.advanceBlockTo(startBlockInt);
+      await time.advanceBlockTo(startT);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
       expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member2)).to.be.equal(ether(500));
@@ -294,7 +309,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should return correct values on the last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks));
+      await time.advanceBlockTo(startT + parseInt(durationT));
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(5000));
       expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member2)).to.be.equal(ether(5000));
@@ -303,7 +318,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should return correct values after the last block', async function () {
-      await time.advanceBlockTo(startBlockInt + parseInt(durationInBlocks) + 5);
+      await time.advanceBlockTo(startT + parseInt(durationT) + 5);
       expect(await vesting.hasStarted()).to.be.true;
       expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(5000));
       expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member2)).to.be.equal(ether(5000));
@@ -325,14 +340,14 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should deny non-active member withdrawing tokens', async function () {
-      await time.advanceBlockTo(startBlockInt + 1);
+      await time.advanceBlockTo(startT + 1);
       await expect(vesting.withdraw(bob, { from: member4 })).to.be.revertedWith('PPVesting::withdraw: User not active');
     });
 
     it('should deny claiming when nothing was assigned', async function () {
-      vesting = await PPVesting.new(owner, erc20.address, startBlock, 10, [member1, member2, member3], 5);
+      vesting = await PPVesting.new(owner, erc20.address, startT, 10, [member1, member2, member3], 5);
       await erc20.mint(vesting.address, ether(3000));
-      await time.advanceBlockTo(startBlockInt + 1);
+      await time.advanceBlockTo(startT + 1);
       await vesting.withdraw(bob, { from: member1 });
       await expect(vesting.withdraw(bob, { from: member1 })).to.be.revertedWith(
         'PPVesting::withdraw: Nothing to withdraw',
@@ -356,7 +371,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should allow transferring after the vesting period ends', async function () {
-      await time.advanceBlockTo(endBlockInt + 2);
+      await time.advanceBlockTo(endT + 2);
       await vesting.transfer(bob, { from: member1 });
 
       const member1Details = await vesting.members(member1);
@@ -409,8 +424,8 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
       vesting = await PPVesting.new(
         owner,
         mockCVP.address,
-        startBlock,
-        durationInBlocks,
+        startT,
+        durationT,
         [member1, member2, member3],
         amountPerMember,
       );
