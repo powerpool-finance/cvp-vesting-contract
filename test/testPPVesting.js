@@ -4,7 +4,6 @@ const { solidity } = require('ethereum-waffle');
 const chai = require('chai');
 const PPVesting = artifacts.require('PPVesting');
 const ERC20 = artifacts.require('ERC20PresetMinterPauser');
-const MockCVP = artifacts.require('MockCVP');
 
 chai.use(solidity);
 const { expect } = chai;
@@ -16,7 +15,7 @@ function ether(value) {
 ERC20.numberFormat = 'String';
 PPVesting.numberFormat = 'String';
 
-contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, member4, alice, bob]) {
+contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4, bob, vault]) {
   let vesting;
   let startV;
   let durationV;
@@ -38,10 +37,9 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     endT = startT + durationT;
 
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
-    await erc20.mint(owner, ether(5000));
+    await erc20.mint(vault, ether(5000));
 
     vesting = await PPVesting.new(
-      owner,
       erc20.address,
       startV,
       durationV,
@@ -54,7 +52,6 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
   describe('initialization', () => {
     it('should assign correct values during initialization', async function () {
-      expect(await vesting.owner()).to.equal(owner);
       expect(await vesting.token()).to.equal(erc20.address);
       expect(await vesting.startV()).to.equal(startV.toString());
       expect(await vesting.durationV()).to.equal(durationV.toString());
@@ -73,47 +70,31 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
     it('should deny initialization with zero vote vesting duration', async function () {
       await expect(
-        PPVesting.new(owner, erc20.address, startV, 0, startT, 2, [member1, member2, member3], amountPerMember),
+        PPVesting.new(erc20.address, startV, 0, startT, 2, [member1, member2, member3], amountPerMember),
       ).to.be.revertedWith('PPVesting: Invalid durationV');
     });
 
     it('should deny initialization with zero token vesting duration', async function () {
       await expect(
-        PPVesting.new(owner, erc20.address, startV, 2, startT, 0, [member1, member2, member3], amountPerMember),
+        PPVesting.new(erc20.address, startV, 2, startT, 0, [member1, member2, member3], amountPerMember),
       ).to.be.revertedWith('PPVesting: Invalid durationT');
     });
 
-    it('should deny initialization with zero owner address', async function () {
+    it('should deny initialization with zero amountPerMember value', async function () {
       await expect(
-        PPVesting.new(
-          constants.ZERO_ADDRESS,
-          erc20.address,
-          startV,
-          durationV,
-          startT,
-          durationT,
-          [member1, member2, member3],
-          amountPerMember,
-        ),
-      ).to.be.revertedWith('PPVesting: Invalid owner address');
-    });
-
-    it('should deny initialization with zero owner address', async function () {
-      await expect(
-        PPVesting.new(owner, erc20.address, startV, durationV, startT, durationT, [member1, member2, member3], 0),
+        PPVesting.new(erc20.address, startV, durationV, startT, durationT, [member1, member2, member3], 0),
       ).to.be.revertedWith('PPVesting: Invalid amount per member');
     });
 
     it('should deny initialization with an empty member list', async function () {
       await expect(
-        PPVesting.new(owner, erc20.address, startV, durationV, startT, durationT, [], amountPerMember),
+        PPVesting.new(erc20.address, startV, durationV, startT, durationT, [], amountPerMember),
       ).to.be.revertedWith('PPVesting: Empty member list');
     });
 
     it('should deny initialization with non-erc20 contract address', async function () {
       await expect(
         PPVesting.new(
-          owner,
           vesting.address,
           startV,
           durationV,
@@ -129,7 +110,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
     it('should deny initialization with non-erc20 address', async function () {
       await expect(
-        PPVesting.new(owner, bob, startV, durationV, startT, durationT, [member1, member2, member3], amountPerMember),
+        PPVesting.new(bob, startV, durationV, startT, durationT, [member1, member2, member3], amountPerMember),
       ).to.be.revertedWith('Transaction reverted: function call to a non-contract account');
     });
   });
@@ -317,7 +298,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
 
   describe('claimTokens', () => {
     beforeEach(async function () {
-      await erc20.transfer(vesting.address, ether(3000), { from: owner });
+      await erc20.transfer(vesting.address, ether(3000), { from: vault });
     });
 
     it('should deny withdrawing before the vesting period start', async function () {
@@ -333,7 +314,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should deny claiming when nothing was assigned', async function () {
-      vesting = await PPVesting.new(owner, erc20.address, startV, 15, startT, 10, [member1, member2, member3], 5);
+      vesting = await PPVesting.new(erc20.address, startV, 15, startT, 10, [member1, member2, member3], 5);
       await erc20.mint(vesting.address, ether(3000));
       await time.advanceBlockTo(startT + 1);
       await vesting.claimTokens(bob, { from: member1 });
@@ -388,45 +369,6 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
       await expect(vesting.transfer(member1, { from: bob })).to.be.revertedWith(
         'PPVesting::transfer: To address has been already used',
       );
-    });
-  });
-
-  describe.skip('transferOwnership', () => {
-    it('should allow an owner transferring ownership', async function () {
-      expect(await vesting.owner()).to.be.equal(owner);
-      await vesting.transferOwnership(alice, { from: owner });
-      expect(await vesting.owner()).to.be.equal(alice);
-    });
-
-    it('should deny another owner transferring ownership', async function () {
-      await expect(vesting.transferOwnership(alice, { from: bob })).to.be.revertedWith(
-        'PPVesting::onlyOwner: Check failed',
-      );
-    });
-  });
-
-  describe.skip('delegateVote', () => {
-    let mockCVP;
-    beforeEach(async function () {
-      mockCVP = await MockCVP.new();
-      vesting = await PPVesting.new(
-        owner,
-        mockCVP.address,
-        startT,
-        durationT,
-        [member1, member2, member3],
-        amountPerMember,
-      );
-    });
-
-    it('should allow an owner transferring ownership', async function () {
-      await vesting.delegateVote(bob, { from: owner });
-      expect(await mockCVP.lastMsgSender()).to.be.equal(vesting.address);
-      expect(await mockCVP.lastCalledDelegatee()).to.be.equal(bob);
-    });
-
-    it('should deny another owner transferring ownership', async function () {
-      await expect(vesting.delegateVote(alice, { from: bob })).to.be.revertedWith('PPVesting::onlyOwner: Check failed');
     });
   });
 });

@@ -16,7 +16,7 @@ ERC20.numberFormat = 'String';
 PPVesting.numberFormat = 'String';
 
 // NOTICE: all durations are represented in blocks
-contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, member3, alice, bob]) {
+contract('PPVesting Behaviour Tests', function ([, member1, member2, member3, alice, bob, vault]) {
   let vesting;
   let startT;
   let endT;
@@ -28,7 +28,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
 
   beforeEach(async function () {
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
-    await erc20.mint(owner, ether(150000));
+    await erc20.mint(vault, ether(150000));
 
     // Setup...
     const amountPerMember = ether('2500');
@@ -43,7 +43,6 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
     endT = startT + durationT;
 
     vesting = await PPVesting.new(
-      owner,
       erc20.address,
       startV,
       durationV,
@@ -53,7 +52,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       amountPerMember,
     );
 
-    await erc20.transfer(vesting.address, ether(30000), { from: owner });
+    await erc20.transfer(vesting.address, ether(30000), { from: vault });
   });
 
   describe('claimTokens', () => {
@@ -698,7 +697,6 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       endT = startT + durationT;
 
       vesting = await PPVesting.new(
-        owner,
         erc20.address,
         startV,
         durationV,
@@ -708,7 +706,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
         amountPerMember,
       );
 
-      await erc20.transfer(vesting.address, ether(30000), { from: owner });
+      await erc20.transfer(vesting.address, ether(30000), { from: vault });
       // Step #1
       await time.advanceBlockTo(startV);
       expect(await vesting.hasVoteVestingStarted()).to.be.true;

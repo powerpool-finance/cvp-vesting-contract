@@ -11,10 +11,6 @@ interface IERC20 {
   function transfer(address _to, uint256 _amount) external;
 }
 
-interface ICRV {
-  function delegate(address delegatee) external;
-}
-
 interface CvpInterface {
   function getPriorVotes(address account, uint256 blockNumber) external view returns (uint96);
 }
@@ -25,9 +21,6 @@ interface CvpInterface {
  */
 contract PPVesting is CvpInterface {
   using SafeMath for uint256;
-
-  /// @notice Emitted when an owner delegates all the contract voting power to a particular address
-  event DelegateVote(address indexed to);
 
   // @notice Emitted once when the contract was deployed
   event Init(address[] members);
@@ -40,9 +33,6 @@ contract PPVesting is CvpInterface {
     uint96 alreadyClaimedVotes,
     uint96 alreadyClaimedTokens
   );
-
-  /// @notice Emitted when an owner transfer their ownership to a new address
-  event TransferOwnership(address indexed from, address indexed to);
 
   /// @notice Emitted when a member withdraws available balance
   event Withdraw(address indexed member, address indexed to, uint96 amount, uint256 newAlreadyClaimed);
@@ -63,9 +53,6 @@ contract PPVesting is CvpInterface {
     uint32 fromBlock;
     uint96 votes;
   }
-
-  /// @notice A contract owner
-  address public owner;
 
   /// @notice ERC20 token address
   address public immutable token;
@@ -106,15 +93,9 @@ contract PPVesting is CvpInterface {
   /// @notice Vote delegations
   mapping(address => address) public voteDelegations;
 
-  modifier onlyOwner() {
-    require(msg.sender == owner, "PPVesting::onlyOwner: Check failed");
-    _;
-  }
-
   /**
    * @notice Constructs a new vesting contract
    * @dev It's up to a deployer to allocate the correct amount of ERC20 tokens on this contract
-   * @param _owner The initial owner address
    * @param _tokenAddress The ERC20 token address to use with this vesting contract
    * @param _startV The block number when the vote vesting period starts
    * @param _durationV The number of blocks the vote vesting period should last
@@ -124,7 +105,6 @@ contract PPVesting is CvpInterface {
    * @param _amountPerMember The number of tokens to distribute to each vesting contract member
    */
   constructor(
-    address _owner,
     address _tokenAddress,
     uint256 _startV,
     uint256 _durationV,
@@ -136,11 +116,9 @@ contract PPVesting is CvpInterface {
     require(_durationV > 1, "PPVesting: Invalid durationV");
     require(_durationT > 1, "PPVesting: Invalid durationT");
     require(_startV < _startT, "PPVesting: Requires startV < startT");
-    require(_owner != address(0), "PPVesting: Invalid owner address");
     require(_amountPerMember > 0, "PPVesting: Invalid amount per member");
     require(IERC20(_tokenAddress).totalSupply() > 0, "PPVesting: Missing supply of the token");
 
-    owner = _owner;
     token = _tokenAddress;
 
     startV = _startV;
@@ -359,20 +337,6 @@ contract PPVesting is CvpInterface {
 
     // return accrued - _alreadyClaimed;
     return accrued.sub(_alreadyClaimed);
-  }
-
-  /*** Owner Methods ***/
-
-  // @notice Owner delegates total unclaimed CVP balance
-  function delegateVote(address _to) external onlyOwner {
-    emit DelegateVote(_to);
-    ICRV(token).delegate(_to);
-  }
-
-  // @notice Owner immediately transfers ownership to another address
-  function transferOwnership(address _to) external onlyOwner {
-    emit TransferOwnership(msg.sender, _to);
-    owner = _to;
   }
 
   /*** Member Methods ***/
