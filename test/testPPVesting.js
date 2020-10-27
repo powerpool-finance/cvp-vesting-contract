@@ -23,7 +23,6 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
   let vesting;
   let startV;
   let durationV;
-  let endV;
   let startT;
   let endT;
   let durationT;
@@ -39,7 +38,6 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
     startT = parseInt(currentBlock) + 10;
     durationT = 20;
 
-    endV = startV + durationV;
     endT = startT + durationT;
 
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
@@ -500,6 +498,120 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
         'PPVesting::claimTokens: Nothing to claim',
       );
     });
+  });
+
+  describe('delegate', () => {
+    beforeEach(async function () {
+      await erc20.transfer(vesting.address, ether(3000), { from: vault });
+    });
+
+    it('should delegate back and forth from an account with 0 balance', async function() {
+      await time.advanceBlockTo(startV);
+      let res = await vesting.delegateVotes(member2, { from: member1 });
+      let theBlock = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      expect(await vesting.getPriorVotes(member1, theBlock)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member2, theBlock)).to.be.equal('0');
+
+      res = await vesting.delegateVotes(member1, { from: member1 });
+      theBlock = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.getPriorVotes(member1, theBlock)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member2, theBlock)).to.be.equal('0');
+    });
+
+    it('should delegate back and forth from self-delegated address', async function() {
+      await vesting.delegateVotes(member2, { from: member1 });
+      await vesting.delegateVotes(member1, { from: member1 });
+
+      await time.advanceBlockTo(startV + 1);
+      await vesting.claimVotes(member1);
+      let res = await vesting.claimVotes(member2);
+      const secondClaim = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.getPriorVotes(member1, secondClaim)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member2, secondClaim)).to.be.equal(ether(1500));
+
+      res = await vesting.delegateVotes(member2, { from: member1 });
+      let delegateBlock = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(2500));
+
+      res = await vesting.delegateVotes(member1, { from: member1 });
+      delegateBlock = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member1);
+      expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(1500));
+    });
+
+    it('should delegate between non-member addresses', async function() {
+      await time.advanceBlockTo(startV + 1);
+      await vesting.claimVotes(member1);
+      let res = await vesting.claimVotes(member2);
+      const firstClaim = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.getPriorVotes(member1, firstClaim)).to.be.equal(ether(1000));
+      expect(await vesting.getPriorVotes(member2, firstClaim)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member3, firstClaim)).to.be.equal(ether(0));
+
+      res = await vesting.delegateVotes(member2, { from: member1 });
+      let delegateBlock = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(2500));
+      expect(await vesting.getPriorVotes(member3, delegateBlock)).to.be.equal(ether(0));
+
+      res = await vesting.delegateVotes(member3, { from: member1 });
+      delegateBlock = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member3);
+      expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member3, delegateBlock)).to.be.equal(ether(1000));
+    });
+
+    it('should deny delegate to the 0 address', async function() {
+      expect(await vesting.voteDelegations(member1)).to.be.equal(constants.ZERO_ADDRESS);
+      await expect(vesting.delegateVotes(constants.ZERO_ADDRESS, { from: member1 }))
+        .to.be.revertedWith('PPVesting::delegateVotes: Can\'t delegate to 0 address');
+    })
+
+    it('should deny delegate to the self address when the delegate is 0 address', async function() {
+      expect(await vesting.voteDelegations(member1)).to.be.equal(constants.ZERO_ADDRESS);
+      await expect(vesting.delegateVotes(member1, { from: member1 }))
+        .to.be.revertedWith('PPVesting::delegateVotes: Already delegated to this address');
+    })
+
+    it('should deny delegate to the already delegated address', async function() {
+      await vesting.delegateVotes(member2, { from: member1 });
+      expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      await expect(vesting.delegateVotes(member2, { from: member1 }))
+        .to.be.revertedWith('PPVesting::delegateVotes: Already delegated to this address');
+    })
+
+    it('should deny delegating to a non-member address', async function() {
+      await expect(vesting.delegateVotes(member4, { from: member1 }))
+        .to.be.revertedWith('PPVesting::delegateVotes: _to user not active');
+    })
+
+    it('should deny delegating to a non-member address', async function() {
+      await vesting.transfer(member4, { from: member1 });
+      await expect(vesting.delegateVotes(member4, { from: member1 }))
+        .to.be.revertedWith('PPVesting::delegateVotes: msg.sender not active');
+    })
   });
 
   describe('transfer', () => {

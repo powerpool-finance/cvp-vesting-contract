@@ -444,7 +444,7 @@ contract PPVesting is CvpInterface {
   function delegateVotes(address _to) external {
     Member memory member = members[msg.sender];
     require(_to != address(0), "PPVesting::delegateVotes: Can't delegate to 0 address");
-    require(member.active == true, "PPVesting::delegateVotes: User not active");
+    require(member.active == true, "PPVesting::delegateVotes: msg.sender not active");
     require(members[_to].active == true, "PPVesting::delegateVotes: _to user not active");
 
     address currentDelegate = getVoteUser(msg.sender);
