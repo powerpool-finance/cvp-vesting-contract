@@ -12,10 +12,6 @@ function ether(value) {
   return etherBN(String(value)).toString();
 }
 
-async function getResTimestamp(res) {
-  return (await web3.eth.getBlock(res.receipt.blockNumber)).timestamp.toString();
-}
-
 ERC20.numberFormat = 'String';
 PPVesting.numberFormat = 'String';
 
@@ -615,33 +611,148 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
   });
 
   describe('transfer', () => {
+    beforeEach(async function () {
+      await erc20.transfer(vesting.address, ether(30000), { from: vault });
+    });
+
     it('should allow transferring before the vesting period start', async function () {
       await vesting.transfer(bob, { from: member1 });
 
       const member1Details = await vesting.members(member1);
       expect(member1Details.active).to.be.false;
       expect(member1Details.transferred).to.be.true;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
       expect(member1Details.alreadyClaimedTokens).to.be.equal('0');
 
       const bobDetails = await vesting.members(bob);
       expect(bobDetails.active).to.be.true;
       expect(bobDetails.transferred).to.be.false;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
       expect(bobDetails.alreadyClaimedTokens).to.be.equal('0');
     });
 
-    it('should allow transferring after the vesting period ends', async function () {
+    it('should allow transferring after the token vesting period ends', async function () {
       await time.advanceBlockTo(endT + 2);
       await vesting.transfer(bob, { from: member1 });
 
       const member1Details = await vesting.members(member1);
       expect(member1Details.active).to.be.false;
       expect(member1Details.transferred).to.be.true;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
       expect(member1Details.alreadyClaimedTokens).to.be.equal('0');
 
       const bobDetails = await vesting.members(bob);
       expect(bobDetails.active).to.be.true;
       expect(bobDetails.transferred).to.be.false;
+      expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(5000));
       expect(bobDetails.alreadyClaimedTokens).to.be.equal('0');
+    });
+
+    it('should correctly transfer with non-delegated votes and some claimed tokens', async function () {
+      await time.advanceBlockTo(startT + 2);
+      let res = await vesting.claimTokens(bob, { from: member1 });
+      const claimedAt = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      // before check
+      let member1Details = await vesting.members(member1);
+      expect(member1Details.active).to.be.true;
+      expect(member1Details.transferred).to.be.false;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal(ether(4000));
+      expect(member1Details.alreadyClaimedTokens).to.be.equal(ether(750));
+      // 4000 - 750
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(3250));
+      expect(await vesting.getPriorVotes(bob, claimedAt)).to.be.equal(ether(0));
+
+      // transfer
+      res = await vesting.transfer(bob, { from: member1 });
+      const transferredAt = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      // after check
+      expect(await vesting.voteDelegations(bob)).to.be.equal(constants.ZERO_ADDRESS);
+      member1Details = await vesting.members(member1);
+      expect(member1Details.active).to.be.false;
+      expect(member1Details.transferred).to.be.true;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
+      expect(member1Details.alreadyClaimedTokens).to.be.equal('0');
+
+      const bobDetails = await vesting.members(bob);
+      expect(bobDetails.active).to.be.true;
+      expect(bobDetails.transferred).to.be.false;
+      // +1000 from auto-claimed votes for bob
+      expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(5000));
+      expect(bobDetails.alreadyClaimedTokens).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
+      // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 1000
+      expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(4250));
+    });
+
+    it('should correctly transfer with self-delegated votes and some claimed tokens', async function () {
+      await vesting.delegateVotes(member2, { from: member1 });
+      await vesting.delegateVotes(member1, { from: member1 });
+
+      await time.advanceBlockTo(startT + 2);
+      let res = await vesting.claimTokens(bob, { from: member1 });
+      const claimedAt = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      // before check
+      let member1Details = await vesting.members(member1);
+      expect(member1Details.active).to.be.true;
+      expect(member1Details.transferred).to.be.false;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal(ether(4000));
+      expect(member1Details.alreadyClaimedTokens).to.be.equal(ether(750));
+      // 4000 - 750
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(3250));
+      expect(await vesting.getPriorVotes(bob, claimedAt)).to.be.equal(ether(0));
+
+      // transfer
+      res = await vesting.transfer(bob, { from: member1 });
+      const transferredAt = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      // after check
+      member1Details = await vesting.members(member1);
+      expect(member1Details.active).to.be.false;
+      expect(member1Details.transferred).to.be.true;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
+      expect(member1Details.alreadyClaimedTokens).to.be.equal('0');
+
+      const bobDetails = await vesting.members(bob);
+      expect(bobDetails.active).to.be.true;
+      expect(bobDetails.transferred).to.be.false;
+      // +1000 from auto-claimed votes for bob
+      expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(5000));
+      expect(bobDetails.alreadyClaimedTokens).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
+
+      // in this case bob will have member1 as delegate an the new votes should be allocated there
+      expect(await vesting.numCheckpoints(bob)).to.be.equal('1');
+      expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(0));
+
+      expect(await vesting.voteDelegations(bob)).to.be.equal(member1);
+
+      // member 1 is inactive, so he doesn't participate in voting
+      expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
+      // but the cached balance is still positive, so the delegators could re-delegate their votes
+      // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 1000
+      expect(await vesting.getCurrentVotes(member1)).to.be.equal(ether(4250));
+      expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(0));
+
+      // and bob claims back his delegated votes from member 1
+      res = await vesting.delegateVotes(bob, { from: bob });
+      const delegatedBackAt = res.receipt.blockNumber;
+      await time.advanceBlock();
+
+      expect(await vesting.getPriorVotes(member1, delegatedBackAt)).to.be.equal(ether(0));
+      expect(await vesting.getCurrentVotes(member1)).to.be.equal(ether(0));
+      // and 750 tokens was claimed earlier
+      expect(await vesting.getPriorVotes(bob, delegatedBackAt)).to.be.equal(ether(4250));
     });
 
     it('should deny non-active member calling the method tokens', async function () {
