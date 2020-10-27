@@ -84,7 +84,7 @@ contract PPVesting is CvpInterface {
   /// @notice Member details by their address
   mapping(address => Member) public members;
 
-  /// @notice A record of unclaimed balance checkpoints for each member, by index
+  /// @notice A record of vote checkpoints for each member, by index
   mapping(address => mapping(uint32 => Checkpoint)) public checkpoints;
 
   /// @notice The number of checkpoints for each member
@@ -371,35 +371,38 @@ contract PPVesting is CvpInterface {
       newAlreadyClaimedVotes = add96(
         _member.alreadyClaimedVotes,
         amount,
-        "PPVesting::claimVotes: NewAlreadyClaimed overflow"
+        "PPVesting::claimVotes: newAlreadyClaimed overflow"
       );
       members[_memberAddress].alreadyClaimedVotes = newAlreadyClaimedVotes;
     } else {
       newAlreadyClaimedVotes = _member.alreadyClaimedVotes;
     }
 
-    address delegate = getVoteUser(_memberAddress);
-
-    // Step #2. Get the accrued votes value
+    // Step #1. Get the accrued votes value
+    // lastMemberAdjustedVotes = claimedVotesBeforeTx - claimedTokensBeforeTx
     uint96 lastMemberAdjustedVotes = sub96(
       _member.alreadyClaimedVotes,
       _member.alreadyClaimedTokens,
-      "PPVesting::_claimVotes: LastMemberAdjustedVotes overflow"
+      "PPVesting::_claimVotes: lastMemberAdjustedVotes overflow"
     );
 
-    // Step #2. Get the adjusted value in relation to the member itself
+    // Get the adjusted value in relation to the member itself.
+    // `adjustedVotes = votesAfterTx - claimedTokensBeforeTheCalculation`
+    // `claimedTokensBeforeTheCalculation` could be updated earlier in claimVotes() method in the same tx
     uint96 adjustedVotes = sub96(
       newAlreadyClaimedVotes,
       members[_memberAddress].alreadyClaimedTokens,
-      "PPVesting::_claimVotes: AdjustedVotes underflow"
+      "PPVesting::_claimVotes: adjustedVotes underflow"
     );
+
+    address delegate = getVoteUser(_memberAddress);
 
     // Step #3. Apply the adjusted value in relation to the delegate
     if (adjustedVotes > lastMemberAdjustedVotes) {
-      uint96 diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::_claimVotes: AdjustedVotes underflow");
+      uint96 diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::_claimVotes: Positive diff underflow");
       _addDelegatedVotesCache(delegate, diff);
     } else if (lastMemberAdjustedVotes > adjustedVotes) {
-      uint96 diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::_claimVotes: AdjustedVotes underflow");
+      uint96 diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::_claimVotes: Negative diff underflow");
       _subDelegatedVotesCache(delegate, diff);
     }
   }
@@ -496,9 +499,9 @@ contract PPVesting is CvpInterface {
       );
       _subDelegatedVotesCache(msg.sender, adjustedVotes);
       checkpoints[_to][1] = Checkpoint(currentBlockNumber, adjustedVotes);
-      numCheckpoints[_to] += 2;
+      numCheckpoints[_to] = 2;
     } else {
-      numCheckpoints[_to] += 1;
+      numCheckpoints[_to] = 1;
     }
 
     voteDelegations[_to] = voteDelegations[msg.sender];
