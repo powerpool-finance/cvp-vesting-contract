@@ -123,7 +123,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
           amountPerMember,
         ),
       ).to.be.revertedWith(
-        'Transaction reverted: function selector was not recognized and there\'s no fallback function',
+        "Transaction reverted: function selector was not recognized and there's no fallback function",
       );
     });
 
@@ -176,38 +176,26 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
       it('should return correct results on the first block of vesting period', async function () {
         // 5000 total / 100 blocks - 20 already claimed = 30
         expect(await vesting.getAvailable('201', '200', '5000', '100', '20')).to.be.equal('30');
-        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', ether(20))).to.be.equal(
-          ether('30'),
-        );
+        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', ether(20))).to.be.equal(ether('30'));
 
         expect(await vesting.getAvailable('201', '200', '5000', '100', '50')).to.be.equal('0');
-        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', ether(50))).to.be.equal(
-          ether('0'),
-        );
+        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', ether(50))).to.be.equal(ether('0'));
       });
 
       it('should return correct results on the last block of vesting period', async function () {
         expect(await vesting.getAvailable('300', '200', '5000', '100', '50')).to.be.equal('4950');
-        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', ether(50))).to.be.equal(
-          ether('4950'),
-        );
+        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', ether(50))).to.be.equal(ether('4950'));
 
         expect(await vesting.getAvailable('300', '200', '5000', '100', '5000')).to.be.equal('0');
-        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', ether(5000))).to.be.equal(
-          ether('0'),
-        );
+        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', ether(5000))).to.be.equal(ether('0'));
       });
 
       it('should return correct results after the last block of vesting period', async function () {
         expect(await vesting.getAvailable('305', '200', '5000', '100', '50')).to.be.equal('4950');
-        expect(await vesting.getAvailable('305', '200', ether('5000'), '100', ether(50))).to.be.equal(
-          ether('4950'),
-        );
+        expect(await vesting.getAvailable('305', '200', ether('5000'), '100', ether(50))).to.be.equal(ether('4950'));
 
         expect(await vesting.getAvailable('305', '200', '5000', '100', '5000')).to.be.equal('0');
-        expect(await vesting.getAvailable('305', '200', ether('5000'), '100', ether(5000))).to.be.equal(
-          ether('0'),
-        );
+        expect(await vesting.getAvailable('305', '200', ether('5000'), '100', ether(5000))).to.be.equal(ether('0'));
       });
 
       it('should revert if already claimed is greater than accrued', async function () {

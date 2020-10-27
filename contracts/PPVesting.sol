@@ -33,7 +33,13 @@ contract PPVesting is CvpInterface {
   event Init(address[] members);
 
   // @notice Emitted when a member transfer his permission
-  event Transfer(address indexed from, address indexed to, uint32 indexed blockNumber, uint96 alreadyClaimedVotes, uint96 alreadyClaimedTokens);
+  event Transfer(
+    address indexed from,
+    address indexed to,
+    uint32 indexed blockNumber,
+    uint96 alreadyClaimedVotes,
+    uint96 alreadyClaimedTokens
+  );
 
   /// @notice Emitted when an owner transfer their ownership to a new address
   event TransferOwnership(address indexed from, address indexed to);
@@ -387,14 +393,22 @@ contract PPVesting is CvpInterface {
     _claimVotes(_to, member, votes);
   }
 
-  function _claimVotes(address _memberAddress, Member memory _member, uint256 _availableVotes) internal {
+  function _claimVotes(
+    address _memberAddress,
+    Member memory _member,
+    uint256 _availableVotes
+  ) internal {
     uint96 newAlreadyClaimedVotes;
 
     if (_availableVotes > 0) {
       uint96 amount = safe96(_availableVotes, "PPVesting::_claimVotes: Amount overflow");
 
       // member.alreadyClaimed += amount
-      newAlreadyClaimedVotes = add96(_member.alreadyClaimedVotes, amount, "PPVesting::claimVotes: NewAlreadyClaimed overflow");
+      newAlreadyClaimedVotes = add96(
+        _member.alreadyClaimedVotes,
+        amount,
+        "PPVesting::claimVotes: NewAlreadyClaimed overflow"
+      );
       members[_memberAddress].alreadyClaimedVotes = newAlreadyClaimedVotes;
     } else {
       newAlreadyClaimedVotes = _member.alreadyClaimedVotes;
@@ -410,7 +424,11 @@ contract PPVesting is CvpInterface {
     );
 
     // Step #2. Get the adjusted value in relation to the member itself
-    uint96 adjustedVotes = sub96(newAlreadyClaimedVotes, members[_memberAddress].alreadyClaimedTokens, "PPVesting::_claimVotes: AdjustedVotes underflow");
+    uint96 adjustedVotes = sub96(
+      newAlreadyClaimedVotes,
+      members[_memberAddress].alreadyClaimedTokens,
+      "PPVesting::_claimVotes: AdjustedVotes underflow"
+    );
 
     // Step #3. Apply the adjusted value in relation to the delegate
     if (adjustedVotes > lastMemberAdjustedVotes) {
@@ -436,7 +454,11 @@ contract PPVesting is CvpInterface {
     uint96 amount = safe96(bigAmount, "PPVesting::claimTokens: Amount overflow");
 
     // member.alreadyClaimed += amount
-    uint96 newAlreadyClaimed = add96(member.alreadyClaimedTokens, amount, "PPVesting::claimTokens: NewAlreadyClaimed overflow");
+    uint96 newAlreadyClaimed = add96(
+      member.alreadyClaimedTokens,
+      amount,
+      "PPVesting::claimTokens: NewAlreadyClaimed overflow"
+    );
     members[msg.sender].alreadyClaimedTokens = newAlreadyClaimed;
 
     uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
@@ -462,7 +484,11 @@ contract PPVesting is CvpInterface {
     require(_to != currentDelegate, "PPVesting::delegateVotes: Already delegated to this address");
 
     voteDelegations[msg.sender] = _to;
-    uint96 adjustedVotes = sub96(member.alreadyClaimedVotes, member.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
+    uint96 adjustedVotes = sub96(
+      member.alreadyClaimedVotes,
+      member.alreadyClaimedTokens,
+      "PPVesting::claimVotes: AdjustedVotes underflow"
+    );
 
     _subDelegatedVotesCache(currentDelegate, adjustedVotes);
     _addDelegatedVotesCache(_to, adjustedVotes);
@@ -485,7 +511,12 @@ contract PPVesting is CvpInterface {
     require(to.transferred == false, "PPVesting::transfer: To address has been already used");
 
     members[msg.sender] = Member({ active: false, transferred: true, alreadyClaimedVotes: 0, alreadyClaimedTokens: 0 });
-    members[_to] = Member({ active: true, transferred: false, alreadyClaimedVotes: alreadyClaimedVotes, alreadyClaimedTokens: alreadyClaimedTokens });
+    members[_to] = Member({
+      active: true,
+      transferred: false,
+      alreadyClaimedVotes: alreadyClaimedVotes,
+      alreadyClaimedTokens: alreadyClaimedTokens
+    });
 
     address currentDelegate = voteDelegations[msg.sender];
 
@@ -494,7 +525,11 @@ contract PPVesting is CvpInterface {
 
     checkpoints[_to][0] = Checkpoint(startBlockNumber, 0);
     if (currentDelegate == address(0)) {
-      uint96 adjustedVotes = sub96(from.alreadyClaimedVotes, from.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
+      uint96 adjustedVotes = sub96(
+        from.alreadyClaimedVotes,
+        from.alreadyClaimedTokens,
+        "PPVesting::claimVotes: AdjustedVotes underflow"
+      );
       _subDelegatedVotesCache(msg.sender, adjustedVotes);
       checkpoints[_to][1] = Checkpoint(currentBlockNumber, adjustedVotes);
       numCheckpoints[_to] += 2;

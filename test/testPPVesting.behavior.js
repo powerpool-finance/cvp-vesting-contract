@@ -157,7 +157,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 7); // #12
       expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 2);
 
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 1000));
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
       expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
@@ -172,7 +172,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 8); // #13
       expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 3);
 
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 1500));
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(1500));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
       expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
@@ -188,7 +188,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 9); // #14
       expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 4);
 
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 2000));
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2000));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
       expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
@@ -205,7 +205,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 10); // #15
       expect((await time.latestBlock()).toNumber()).to.be.equal(startT + 5);
 
-      expect(await erc20.balanceOf(alice)).to.be.equal(ether( 2500));
+      expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(250));
@@ -450,7 +450,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
   });
 
   describe('delegation', () => {
-    it('should allow delegation', async function() {
+    it('should allow delegation', async function () {
       // Step #1
       await time.advanceBlockTo(startV);
       expect(await vesting.hasVoteVestingStarted()).to.be.true;
@@ -501,7 +501,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
 
       // Step #5
       await vesting.claimVotes(member3);
-      await vesting.delegateVotes(member2, { from: member3});
+      await vesting.delegateVotes(member2, { from: member3 });
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 7);
 
       await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
@@ -588,7 +588,6 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect(await vesting.getPriorVotes(member3, startV + 7)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member3, startV + 8)).to.be.equal(ether(0));
 
-
       // Step #7
       await vesting.delegateVotes(member1, { from: member2 });
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 10);
@@ -641,8 +640,9 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       await vesting.claimTokens(member1, { from: member1 });
       await vesting.claimTokens(member2, { from: member2 });
       await vesting.claimTokens(member3, { from: member3 });
-      await expect(vesting.claimVotes(member1, { from: member3 }))
-        .to.be.revertedWith('PPVesting::claimVotes: Nothing to claim');
+      await expect(vesting.claimVotes(member1, { from: member3 })).to.be.revertedWith(
+        'PPVesting::claimVotes: Nothing to claim',
+      );
 
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 14);
       expect((await time.latestBlock()).toNumber()).to.be.equal(endT + 4);
@@ -685,7 +685,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect(await vesting.getPriorVotes(member3, startV + 13)).to.be.equal(ether(0));
     });
 
-    it('should correctly handle delegations on transfers', async function() {
+    it('should correctly handle delegations on transfers', async function () {
       const amountPerMember = ether('2500');
       currentBlock = await time.latestBlock();
 
@@ -759,7 +759,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
 
       // Step #6
       await vesting.claimVotes(member3);
-      await vesting.delegateVotes(member2, { from: member3});
+      await vesting.delegateVotes(member2, { from: member3 });
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 7);
 
       await expect(vesting.getPriorVotes(member1, startV)).to.be.revertedWith(
@@ -892,7 +892,7 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       await vesting.claimTokens(member2, { from: member2 }); // block #+17
       await vesting.delegateVotes(member2, { from: member2 }); // block #+18
       await vesting.claimTokens(alice, { from: alice }); // block #+19
-      await vesting.delegateVotes(member3, { from: alice }) // block #+20
+      await vesting.delegateVotes(member3, { from: alice }); // block #+20
       await vesting.claimTokens(alice, { from: alice }); // block #+21
 
       expect((await time.latestBlock()).toNumber()).to.be.equal(startV + 21);
@@ -1032,5 +1032,5 @@ contract('PPVesting Behaviour Tests', function ([, owner, member1, member2, memb
       expect(await vesting.getPriorVotes(member3, startV + 22)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member3, startV + 23)).to.be.equal(ether(0));
     });
-  })
+  });
 });
