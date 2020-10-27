@@ -163,7 +163,7 @@ contract PPVesting is CvpInterface {
    * @notice Checks whether the vote vesting period has started or not
    * @return true If the vote vesting period has started
    */
-  function voteVestingStarted() external view returns (bool) {
+  function hasVoteVestingStarted() external view returns (bool) {
     return block.number >= startV;
   }
 
@@ -171,7 +171,7 @@ contract PPVesting is CvpInterface {
    * @notice Checks whether the vote vesting period has ended or not
    * @return true If the vote vesting period has ended
    */
-  function voteVestingEnded() external view returns (bool) {
+  function hasVoteVestingEnded() external view returns (bool) {
     return block.number >= endV;
   }
 
@@ -179,7 +179,7 @@ contract PPVesting is CvpInterface {
    * @notice Checks whether the token vesting period has started or not
    * @return true If the token vesting period has started
    */
-  function tokenVestingStarted() external view returns (bool) {
+  function hasTokenVestingStarted() external view returns (bool) {
     return block.number >= startT;
   }
 
@@ -187,7 +187,7 @@ contract PPVesting is CvpInterface {
    * @notice Checks whether the token vesting period has ended or not
    * @return true If the token vesting period has ended
    */
-  function tokenVestingEnded() external view returns (bool) {
+  function hasTokenVestingEnded() external view returns (bool) {
     return block.number >= endT;
   }
 
@@ -262,13 +262,13 @@ contract PPVesting is CvpInterface {
    * @param _member The member address to return available balance for
    * @return The available amount for withdrawal in the next block
    */
-  function availableTokensForMemberInTheNextBlock(address _member) external view returns (uint256) {
+  function getAvailableTokensForMemberInTheNextBlock(address _member) external view returns (uint256) {
     Member storage member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return available(block.number + 1, startT, amountPerMember, durationT, member.alreadyClaimedTokens);
+    return getAvailable(block.number + 1, startT, amountPerMember, durationT, member.alreadyClaimedTokens);
   }
 
   /**
@@ -277,13 +277,13 @@ contract PPVesting is CvpInterface {
    * @param _member The member address to return available balance for
    * @return The available amount for a claim in the current block
    */
-  function availableTokensForMember(address _member) external view returns (uint256) {
+  function getAvailableTokensForMember(address _member) external view returns (uint256) {
     Member storage member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return availableTokens(member.alreadyClaimedTokens);
+    return getAvailableTokens(member.alreadyClaimedTokens);
   }
 
   /**
@@ -292,13 +292,13 @@ contract PPVesting is CvpInterface {
    * @param _member The member address to return available balance for
    * @return The available amount for a claim in the current block
    */
-  function availableVotesForMember(address _member) external view returns (uint256) {
+  function getAvailableVotesForMember(address _member) external view returns (uint256) {
     Member storage member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return availableVotes(member.alreadyClaimedVotes);
+    return getAvailableVotes(member.alreadyClaimedVotes);
   }
 
   /**
@@ -308,8 +308,8 @@ contract PPVesting is CvpInterface {
    * @param _alreadyClaimed amount
    * @return The available amount for claim
    */
-  function availableTokens(uint256 _alreadyClaimed) public view returns (uint256) {
-    return available(block.number, startT, amountPerMember, durationT, _alreadyClaimed);
+  function getAvailableTokens(uint256 _alreadyClaimed) public view returns (uint256) {
+    return getAvailable(block.number, startT, amountPerMember, durationT, _alreadyClaimed);
   }
 
   /**
@@ -319,8 +319,8 @@ contract PPVesting is CvpInterface {
    * @param _alreadyClaimed amount
    * @return The available amount for claim
    */
-  function availableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
-    return available(block.number, startV, amountPerMember, durationV, _alreadyClaimed);
+  function getAvailableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
+    return getAvailable(block.number, startV, amountPerMember, durationV, _alreadyClaimed);
   }
 
   /**
@@ -333,7 +333,7 @@ contract PPVesting is CvpInterface {
    * @param _alreadyClaimed The amount of tokens already claimed by a member
    * @return The available amount for withdrawal
    */
-  function available(
+  function getAvailable(
     uint256 _now,
     uint256 _startBlock,
     uint256 _amountPerMember,
@@ -380,7 +380,7 @@ contract PPVesting is CvpInterface {
     Member memory member = members[_to];
     require(member.active == true, "PPVesting::claimVotes: User not active");
 
-    uint256 votes = availableVotes(member.alreadyClaimedVotes);
+    uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
     require(votes > 0, "PPVesting::claimVotes: Nothing to claim");
 
@@ -431,7 +431,7 @@ contract PPVesting is CvpInterface {
     Member memory member = members[msg.sender];
     require(member.active == true, "PPVesting::claimTokens: User not active");
 
-    uint256 bigAmount = availableTokens(member.alreadyClaimedTokens);
+    uint256 bigAmount = getAvailableTokens(member.alreadyClaimedTokens);
     require(bigAmount > 0, "PPVesting::claimTokens: Nothing to claim");
     uint96 amount = safe96(bigAmount, "PPVesting::claimTokens: Amount overflow");
 
@@ -439,7 +439,7 @@ contract PPVesting is CvpInterface {
     uint96 newAlreadyClaimed = add96(member.alreadyClaimedTokens, amount, "PPVesting::claimTokens: NewAlreadyClaimed overflow");
     members[msg.sender].alreadyClaimedTokens = newAlreadyClaimed;
 
-    uint256 votes = availableVotes(member.alreadyClaimedVotes);
+    uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
     _claimVotes(msg.sender, member, votes);
 
@@ -506,7 +506,7 @@ contract PPVesting is CvpInterface {
     delete voteDelegations[msg.sender];
 
     Member memory toMember = members[_to];
-    uint256 votes = availableVotes(toMember.alreadyClaimedVotes);
+    uint256 votes = getAvailableVotes(toMember.alreadyClaimedVotes);
     _claimVotes(_to, toMember, votes);
 
     emit Transfer(msg.sender, _to, startBlockNumber, alreadyClaimedVotes, alreadyClaimedTokens);

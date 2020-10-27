@@ -30,10 +30,10 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     const currentBlock = await time.latestBlock();
 
     startV = parseInt(currentBlock) + 5;
-    durationV = 10;
+    durationV = 15;
 
     startT = parseInt(currentBlock) + 10;
-    durationT = 5;
+    durationT = 10;
 
     endT = startT + durationT;
 
@@ -134,196 +134,196 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
   });
 
-  describe('availableToWithdraw pure function', () => {
+  describe('get available pure function', () => {
     describe('when nothing claimed yet', () => {
       it('should return correct results before and on startBlock', async function () {
-        expect(await vesting.availableToWithdraw('199', '200', '5000', '100', '0')).to.be.equal('0');
-        expect(await vesting.availableToWithdraw('200', '200', '5000', '100', '0')).to.be.equal('0');
+        expect(await vesting.getAvailable('199', '200', '5000', '100', '0')).to.be.equal('0');
+        expect(await vesting.getAvailable('200', '200', '5000', '100', '0')).to.be.equal('0');
       });
 
       it('should return correct results on the first block of vesting period', async function () {
         // 5000 total / 100 blocks = 50 per block
-        expect(await vesting.availableToWithdraw('201', '200', '5000', '100', '0')).to.be.equal('50');
-        expect(await vesting.availableToWithdraw('201', '200', ether('5000'), '100', '0')).to.be.equal(ether('50'));
+        expect(await vesting.getAvailable('201', '200', '5000', '100', '0')).to.be.equal('50');
+        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', '0')).to.be.equal(ether('50'));
       });
 
       it('should return correct results on the first block of vesting period', async function () {
         // 5000 total / 100 blocks * 1 block = 50 for the first block
-        expect(await vesting.availableToWithdraw('201', '200', '5000', '100', '0')).to.be.equal('50');
-        expect(await vesting.availableToWithdraw('201', '200', ether('5000'), '100', '0')).to.be.equal(ether('50'));
+        expect(await vesting.getAvailable('201', '200', '5000', '100', '0')).to.be.equal('50');
+        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', '0')).to.be.equal(ether('50'));
       });
 
       it('should return correct results on the pre-last block of vesting period', async function () {
         // 5000 total / 100 blocks  * 99 blocks = 4950
-        expect(await vesting.availableToWithdraw('299', '200', '5000', '100', '0')).to.be.equal('4950');
-        expect(await vesting.availableToWithdraw('299', '200', ether('5000'), '100', '0')).to.be.equal(ether('4950'));
+        expect(await vesting.getAvailable('299', '200', '5000', '100', '0')).to.be.equal('4950');
+        expect(await vesting.getAvailable('299', '200', ether('5000'), '100', '0')).to.be.equal(ether('4950'));
       });
 
       it('should return correct results on the last block of vesting period', async function () {
         // 5000 total
-        expect(await vesting.availableToWithdraw('300', '200', '5000', '100', '0')).to.be.equal('5000');
-        expect(await vesting.availableToWithdraw('300', '200', ether('5000'), '100', '0')).to.be.equal(ether('5000'));
+        expect(await vesting.getAvailable('300', '200', '5000', '100', '0')).to.be.equal('5000');
+        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', '0')).to.be.equal(ether('5000'));
       });
 
       it('should return correct results on the next after the last block of vesting period', async function () {
         // 5000 total
-        expect(await vesting.availableToWithdraw('301', '200', '5000', '100', '0')).to.be.equal('5000');
-        expect(await vesting.availableToWithdraw('301', '200', ether('5000'), '100', '0')).to.be.equal(ether('5000'));
+        expect(await vesting.getAvailable('301', '200', '5000', '100', '0')).to.be.equal('5000');
+        expect(await vesting.getAvailable('301', '200', ether('5000'), '100', '0')).to.be.equal(ether('5000'));
       });
     });
 
     describe('when a partial amount is already claimed', () => {
       it('should return correct results on the first block of vesting period', async function () {
         // 5000 total / 100 blocks - 20 already claimed = 30
-        expect(await vesting.availableToWithdraw('201', '200', '5000', '100', '20')).to.be.equal('30');
-        expect(await vesting.availableToWithdraw('201', '200', ether('5000'), '100', ether(20))).to.be.equal(
+        expect(await vesting.getAvailable('201', '200', '5000', '100', '20')).to.be.equal('30');
+        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', ether(20))).to.be.equal(
           ether('30'),
         );
 
-        expect(await vesting.availableToWithdraw('201', '200', '5000', '100', '50')).to.be.equal('0');
-        expect(await vesting.availableToWithdraw('201', '200', ether('5000'), '100', ether(50))).to.be.equal(
+        expect(await vesting.getAvailable('201', '200', '5000', '100', '50')).to.be.equal('0');
+        expect(await vesting.getAvailable('201', '200', ether('5000'), '100', ether(50))).to.be.equal(
           ether('0'),
         );
       });
 
       it('should return correct results on the last block of vesting period', async function () {
-        expect(await vesting.availableToWithdraw('300', '200', '5000', '100', '50')).to.be.equal('4950');
-        expect(await vesting.availableToWithdraw('300', '200', ether('5000'), '100', ether(50))).to.be.equal(
+        expect(await vesting.getAvailable('300', '200', '5000', '100', '50')).to.be.equal('4950');
+        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', ether(50))).to.be.equal(
           ether('4950'),
         );
 
-        expect(await vesting.availableToWithdraw('300', '200', '5000', '100', '5000')).to.be.equal('0');
-        expect(await vesting.availableToWithdraw('300', '200', ether('5000'), '100', ether(5000))).to.be.equal(
+        expect(await vesting.getAvailable('300', '200', '5000', '100', '5000')).to.be.equal('0');
+        expect(await vesting.getAvailable('300', '200', ether('5000'), '100', ether(5000))).to.be.equal(
           ether('0'),
         );
       });
 
       it('should return correct results after the last block of vesting period', async function () {
-        expect(await vesting.availableToWithdraw('305', '200', '5000', '100', '50')).to.be.equal('4950');
-        expect(await vesting.availableToWithdraw('305', '200', ether('5000'), '100', ether(50))).to.be.equal(
+        expect(await vesting.getAvailable('305', '200', '5000', '100', '50')).to.be.equal('4950');
+        expect(await vesting.getAvailable('305', '200', ether('5000'), '100', ether(50))).to.be.equal(
           ether('4950'),
         );
 
-        expect(await vesting.availableToWithdraw('305', '200', '5000', '100', '5000')).to.be.equal('0');
-        expect(await vesting.availableToWithdraw('305', '200', ether('5000'), '100', ether(5000))).to.be.equal(
+        expect(await vesting.getAvailable('305', '200', '5000', '100', '5000')).to.be.equal('0');
+        expect(await vesting.getAvailable('305', '200', ether('5000'), '100', ether(5000))).to.be.equal(
           ether('0'),
         );
       });
 
       it('should revert if already claimed is greater than accrued', async function () {
-        await expect(vesting.availableToWithdraw('201', '200', '5000', '100', '51')).to.be.revertedWith(
+        await expect(vesting.getAvailable('201', '200', '5000', '100', '51')).to.be.revertedWith(
           'SafeMath: subtraction overflow',
         );
       });
     });
   });
 
-  describe('availableToWithdrawFor', () => {
+  describe('getAvailableTokens', () => {
     it('should return correct values before the start', async function () {
-      expect(await vesting.hasStarted()).to.be.false;
-      expect(await vesting.availableToWithdrawFor(0)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawFor(5000)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.false;
+      expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(5000)).to.be.equal(ether(0));
     });
 
     it('should return correct values on 0th block', async function () {
       await time.advanceBlockTo(startT);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawFor(0)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawFor(5000)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(5000)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the first block after the start', async function () {
       await time.advanceBlockTo(startT + 1);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawFor(0)).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawFor(ether(500))).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokens(ether(500))).to.be.equal(ether(0));
     });
 
     it('should return correct values on the pre-last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT) - 1);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.hasEnded()).to.be.false;
-      expect(await vesting.availableToWithdrawFor(ether(0))).to.be.equal(ether(4500));
-      expect(await vesting.availableToWithdrawFor(ether(4000))).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawFor(ether(4500))).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.hasTokenVestingEnded()).to.be.false;
+      expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(4500));
+      expect(await vesting.getAvailableTokens(ether(4000))).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokens(ether(4500))).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT));
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.hasEnded()).to.be.true;
-      expect(await vesting.availableToWithdrawFor(ether(0))).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawFor(ether(4500))).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawFor(ether(5000))).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.hasTokenVestingEnded()).to.be.true;
+      expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokens(ether(4500))).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokens(ether(5000))).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.hasEnded()).to.be.true;
-      expect(await vesting.availableToWithdrawFor(ether(0))).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawFor(ether(4500))).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawFor(ether(5000))).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.hasTokenVestingEnded()).to.be.true;
+      expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokens(ether(4500))).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokens(ether(5000))).to.be.equal(ether(0));
     });
   });
 
-  describe('availableToWithdrawForMember', () => {
+  describe('getAvailableTokensForMember', () => {
     it('should return correct values before the start', async function () {
-      expect(await vesting.hasStarted()).to.be.false;
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMember(member2)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMember(member3)).to.be.equal(ether(0));
-      expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.false;
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokensForMember(member2)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokensForMember(member3)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the first block after the start', async function () {
       await time.advanceBlockTo(startT + 1);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT));
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawForMember(member1)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMember(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
   });
 
-  describe('availableToWithdrawForMemberInTheNextBlock', () => {
+  describe('availableTokensForMemberInTheNextBlock', () => {
     it('should return correct values before the start', async function () {
       await time.advanceBlockTo(startT);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member2)).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member3)).to.be.equal(ether(500));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member2)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member3)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT));
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member2)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member3)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member2)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member3)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last block', async function () {
       await time.advanceBlockTo(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasStarted()).to.be.true;
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member1)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member2)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member3)).to.be.equal(ether(5000));
-      expect(await vesting.availableToWithdrawForMemberInTheNextBlock(member4)).to.be.equal(ether(0));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member1)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member2)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member3)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberInTheNextBlock(member4)).to.be.equal(ether(0));
     });
   });
 
@@ -333,7 +333,7 @@ contract('PPVesting Unit Tests', function ([, owner, member1, member2, member3, 
     });
 
     it('should deny withdrawing before the vesting period start', async function () {
-      expect(await vesting.hasStarted()).to.be.false;
+      expect(await vesting.hasTokenVestingStarted()).to.be.false;
       await expect(vesting.withdraw(bob, { from: member1 })).to.be.revertedWith(
         ' PPVesting::withdraw: Nothing to withdraw',
       );
