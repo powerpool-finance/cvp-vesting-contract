@@ -139,7 +139,7 @@ contract PPVesting is CvpInterface {
     require(_durationV > 1, "PPVesting: Invalid durationV");
     require(_durationT > 1, "PPVesting: Invalid durationT");
     require(_startV < _startT, "PPVesting: Requires startV < startT");
-    require((_startV + _durationV) < (_startT + _durationT), "PPVesting: Requires endV < endT");
+    require((_startV + _durationV) <= (_startT + _durationT), "PPVesting: Requires endV <= endT");
     require(_amountPerMember > 0, "PPVesting: Invalid amount per member");
     require(IERC20(_tokenAddress).totalSupply() > 0, "PPVesting: Missing supply of the token");
 
@@ -245,8 +245,13 @@ contract PPVesting is CvpInterface {
       return 0;
     }
 
-    // First check (Vote vesting has ended) OR (A member has not claimed any tokens yet) OR (The blockNumber is before the first checkpoint)
-    if (block.number > endV || nCheckpoints == 0 || checkpoints[account][0].fromBlock > blockNumber) {
+    // (Vote vesting at this blockNumber has ended)
+    if (blockNumber > endV) {
+      return 0;
+    }
+
+    // (A member has not claimed any tokens yet) OR (The blockNumber is before the first checkpoint)
+    if (nCheckpoints == 0 || checkpoints[account][0].fromBlock > blockNumber) {
       return 0;
     }
 
