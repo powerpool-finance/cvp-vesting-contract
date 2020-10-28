@@ -25,17 +25,40 @@ contract PPVesting is CvpInterface {
   // @notice Emitted once when the contract was deployed
   event Init(address[] members);
 
+  // @notice Emitted when a member delegates his votes to one of the delegates or to himself
+  event DelegateVotes(address indexed from, address indexed to, address indexed previousDelegate, uint96 adjustedVotes);
+
   // @notice Emitted when a member transfer his permission
   event Transfer(
     address indexed from,
     address indexed to,
     uint32 indexed blockNumber,
     uint96 alreadyClaimedVotes,
-    uint96 alreadyClaimedTokens
+    uint96 alreadyClaimedTokens,
+    address currentDelegate
   );
 
-  /// @notice Emitted when a member withdraws available balance
-  event Withdraw(address indexed member, address indexed to, uint96 amount, uint256 newAlreadyClaimed);
+  /// @notice Emitted when a member claims available votes
+  event ClaimVotes(
+    address indexed member,
+    address indexed delegate,
+    uint96 lastAlreadyClaimedVotes,
+    uint96 lastAlreadyClaimedTokens,
+    uint96 newAlreadyClaimedVotes,
+    uint96 newAlreadyClaimedTokens,
+    uint96 lastMemberAdjustedVotes,
+    uint96 adjustedVotes,
+    uint96 diff
+  );
+
+  /// @notice Emitted when a member claims available tokens
+  event ClaimTokens(
+    address indexed member,
+    address indexed to,
+    uint96 amount,
+    uint256 newAlreadyClaimed,
+    uint256 votesAvailable
+  );
 
   /// @notice A Emitted when a member unclaimed balance changes
   event UnclaimedBalanceChanged(address indexed member, uint256 previousUnclaimed, uint256 newUnclaimed);
@@ -176,6 +199,11 @@ contract PPVesting is CvpInterface {
     return block.number >= endT;
   }
 
+  /**
+   * @notice Returns the address a _voteHolder delegated their votes to
+   * @param _voteHolder The address to fetch delegate for
+   * @return address The delegate address
+   */
   function getVoteUser(address _voteHolder) public view returns (address) {
     address currentDelegate = voteDelegations[_voteHolder];
     if (currentDelegate == address(0)) {
@@ -184,7 +212,12 @@ contract PPVesting is CvpInterface {
     return currentDelegate;
   }
 
-  function getCurrentVotes(address _member) public view returns (uint256) {
+  /**
+   * @notice Provides debugging information about the last cached votes checkpoint with no other conditions
+   * @dev This method remains only for debugging purposes. For actual vote information use `getPriorVotes()`
+   * @param _member The member address to get votes for
+   */
+  function debugLastCachedVotes(address _member) public view returns (uint256) {
     uint32 dstRepNum = numCheckpoints[_member];
     return dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
   }
@@ -239,13 +272,13 @@ contract PPVesting is CvpInterface {
     return checkpoints[account][lower].votes;
   }
 
-  /*** Available to Withdraw calculation ***/
+  /*** Available to Claim calculation ***/
 
   /**
-   * @notice Returns available amount for withdrawal in the next mined block
+   * @notice Returns available amount for a claim in the next mined block
    *         by a given member based on the current contract values
    * @param _member The member address to return available balance for
-   * @return The available amount for withdrawal in the next block
+   * @return The available amount for a claim in the next block
    */
   function getAvailableTokensForMemberInTheNextBlock(address _member) external view returns (uint256) {
     Member storage member = members[_member];
@@ -312,14 +345,14 @@ contract PPVesting is CvpInterface {
   }
 
   /**
-   * @notice Calculates available amount for withdrawal
+   * @notice Calculates available amount for a claim
    * @dev A pure function which doesn't reads anything from state
    * @param _now A block number to calculate the available amount
    * @param _startBlock The vesting period start block number
    * @param _amountPerMember The amount of ERC20 tokens to be distributed to each member
    *         during this vesting period
    * @param _alreadyClaimed The amount of tokens already claimed by a member
-   * @return The available amount for withdrawal
+   * @return The available amount for a claim
    */
   function getAvailable(
     uint256 _now,
@@ -348,7 +381,7 @@ contract PPVesting is CvpInterface {
   /**
    * @notice An active member claims a distributed amount of votes
    * @dev Caches unclaimed balance per block number which could be used by voting contract
-   * @param _to address to withdraw ERC20 tokens to
+   * @param _to address to claim votes to
    */
   function claimVotes(address _to) external {
     Member memory member = members[_to];
@@ -401,21 +434,33 @@ contract PPVesting is CvpInterface {
     );
 
     address delegate = getVoteUser(_memberAddress);
+    uint96 diff;
 
     // Step #3. Apply the adjusted value in relation to the delegate
     if (adjustedVotes > lastMemberAdjustedVotes) {
-      uint96 diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::_claimVotes: Positive diff underflow");
+      diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::_claimVotes: Positive diff underflow");
       _addDelegatedVotesCache(delegate, diff);
     } else if (lastMemberAdjustedVotes > adjustedVotes) {
-      uint96 diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::_claimVotes: Negative diff underflow");
+      diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::_claimVotes: Negative diff underflow");
       _subDelegatedVotesCache(delegate, diff);
     }
+
+    emit ClaimVotes(
+      _memberAddress,
+      delegate,
+      _member.alreadyClaimedVotes,
+      _member.alreadyClaimedTokens,
+      newAlreadyClaimedVotes,
+      members[_memberAddress].alreadyClaimedTokens,
+      lastMemberAdjustedVotes,
+      adjustedVotes,
+      diff
+    );
   }
 
   /**
    * @notice An active member claims a distributed amount of ERC20 tokens
-   * @dev Caches unclaimed balance per block number which could be used by voting contract
-   * @param _to address to withdraw ERC20 tokens to
+   * @param _to address to claim ERC20 tokens to
    */
   function claimTokens(address _to) external {
     Member memory member = members[msg.sender];
@@ -439,7 +484,7 @@ contract PPVesting is CvpInterface {
       _claimVotes(msg.sender, member, votes);
     }
 
-    emit Withdraw(msg.sender, _to, amount, newAlreadyClaimed);
+    emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
 
     IERC20(token).transfer(_to, bigAmount);
   }
@@ -466,6 +511,8 @@ contract PPVesting is CvpInterface {
 
     _subDelegatedVotesCache(currentDelegate, adjustedVotes);
     _addDelegatedVotesCache(_to, adjustedVotes);
+
+    emit DelegateVotes(msg.sender, _to, currentDelegate, adjustedVotes);
   }
 
   /**
@@ -518,7 +565,7 @@ contract PPVesting is CvpInterface {
     uint256 votes = getAvailableVotes(toMember.alreadyClaimedVotes);
     _claimVotes(_to, toMember, votes);
 
-    emit Transfer(msg.sender, _to, startBlockNumber, alreadyClaimedVotes, alreadyClaimedTokens);
+    emit Transfer(msg.sender, _to, startBlockNumber, alreadyClaimedVotes, alreadyClaimedTokens, currentDelegate);
   }
 
   function _subDelegatedVotesCache(address _member, uint96 _subAmount) internal {
