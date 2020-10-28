@@ -63,7 +63,7 @@ contract PPVesting is CvpInterface {
   /// @notice Duration of the vote vesting in blocks
   uint256 public immutable durationV;
 
-  /// @notice End vote vesting block number, used only from UI
+  /// @notice End vote vesting block number
   uint256 public immutable endV;
 
   /// @notice Start block number for token vesting calculations
@@ -116,6 +116,7 @@ contract PPVesting is CvpInterface {
     require(_durationV > 1, "PPVesting: Invalid durationV");
     require(_durationT > 1, "PPVesting: Invalid durationT");
     require(_startV < _startT, "PPVesting: Requires startV < startT");
+    require((_startV + _durationV) < (_startT + _durationT), "PPVesting: Requires endV < endT");
     require(_amountPerMember > 0, "PPVesting: Invalid amount per member");
     require(IERC20(_tokenAddress).totalSupply() > 0, "PPVesting: Missing supply of the token");
 
@@ -211,8 +212,8 @@ contract PPVesting is CvpInterface {
       return 0;
     }
 
-    // First check (A member has not claimed any tokens yet) OR (The blockNumber is before the first checkpoint)
-    if (nCheckpoints == 0 || checkpoints[account][0].fromBlock > blockNumber) {
+    // First check (Vote vesting has ended) OR (A member has not claimed any tokens yet) OR (The blockNumber is before the first checkpoint)
+    if (block.number > endV || nCheckpoints == 0 || checkpoints[account][0].fromBlock > blockNumber) {
       return 0;
     }
 
@@ -304,6 +305,9 @@ contract PPVesting is CvpInterface {
    * @return The available amount for claim
    */
   function getAvailableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
+    if (block.number > endV) {
+      return 0;
+    }
     return getAvailable(block.number, startV, amountPerMember, durationV, _alreadyClaimed);
   }
 
@@ -352,6 +356,7 @@ contract PPVesting is CvpInterface {
 
     uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
+    require(block.number <= endV, "PPVesting::claimVotes: Vote vesting has ended");
     require(votes > 0, "PPVesting::claimVotes: Nothing to claim");
 
     _claimVotes(_to, member, votes);
@@ -430,7 +435,9 @@ contract PPVesting is CvpInterface {
 
     uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
-    _claimVotes(msg.sender, member, votes);
+    if (block.number <= endV) {
+      _claimVotes(msg.sender, member, votes);
+    }
 
     emit Withdraw(msg.sender, _to, amount, newAlreadyClaimed);
 
