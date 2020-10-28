@@ -3,7 +3,6 @@
 pragma solidity 0.6.12;
 
 import "./utils/SafeMath.sol";
-import "@nomiclabs/buidler/console.sol";
 
 interface IERC20 {
   function totalSupply() external view returns (uint256);

@@ -21,7 +21,6 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
   let durationV;
   let startT;
   let endT;
-  let endV;
   let durationT;
   const amountPerMember = ether('5000');
   let erc20;
@@ -36,7 +35,6 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
     durationT = 20;
 
     endT = startT + durationT;
-    endV = startV + durationV;
 
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
     await erc20.mint(vault, ether(5000000));
