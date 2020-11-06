@@ -10,10 +10,6 @@ interface IERC20 {
   function transfer(address _to, uint256 _amount) external;
 }
 
-interface ICRV {
-  function delegate(address delegatee) external;
-}
-
 interface CvpInterface {
   function getPriorVotes(address account, uint256 blockNumber) external view returns (uint96);
 }
@@ -25,20 +21,43 @@ interface CvpInterface {
 contract PPVesting is CvpInterface {
   using SafeMath for uint256;
 
-  /// @notice Emitted when an owner delegates all the contract voting power to a particular address
-  event DelegateVote(address indexed to);
-
   // @notice Emitted once when the contract was deployed
   event Init(address[] members);
 
+  // @notice Emitted when a member delegates his votes to one of the delegates or to himself
+  event DelegateVotes(address indexed from, address indexed to, address indexed previousDelegate, uint96 adjustedVotes);
+
   // @notice Emitted when a member transfer his permission
-  event Transfer(address indexed from, address indexed to, uint32 indexed blockNumber, uint96 alreadyClaimed);
+  event Transfer(
+    address indexed from,
+    address indexed to,
+    uint32 indexed blockNumber,
+    uint96 alreadyClaimedVotes,
+    uint96 alreadyClaimedTokens,
+    address currentDelegate
+  );
 
-  /// @notice Emitted when an owner transfer their ownership to a new address
-  event TransferOwnership(address indexed from, address indexed to);
+  /// @notice Emitted when a member claims available votes
+  event ClaimVotes(
+    address indexed member,
+    address indexed delegate,
+    uint96 lastAlreadyClaimedVotes,
+    uint96 lastAlreadyClaimedTokens,
+    uint96 newAlreadyClaimedVotes,
+    uint96 newAlreadyClaimedTokens,
+    uint96 lastMemberAdjustedVotes,
+    uint96 adjustedVotes,
+    uint96 diff
+  );
 
-  /// @notice Emitted when a member withdraws available balance
-  event Withdraw(address indexed member, address indexed to, uint96 amount, uint256 newAlreadyClaimed);
+  /// @notice Emitted when a member claims available tokens
+  event ClaimTokens(
+    address indexed member,
+    address indexed to,
+    uint96 amount,
+    uint256 newAlreadyClaimed,
+    uint256 votesAvailable
+  );
 
   /// @notice A Emitted when a member unclaimed balance changes
   event UnclaimedBalanceChanged(address indexed member, uint256 previousUnclaimed, uint256 newUnclaimed);
@@ -47,7 +66,8 @@ contract PPVesting is CvpInterface {
   struct Member {
     bool active;
     bool transferred;
-    uint96 alreadyClaimed;
+    uint96 alreadyClaimedVotes;
+    uint96 alreadyClaimedTokens;
   }
 
   /// @notice A checkpoint for marking number of votes from a given block
@@ -56,20 +76,26 @@ contract PPVesting is CvpInterface {
     uint96 votes;
   }
 
-  /// @notice A contract owner
-  address public owner;
-
   /// @notice ERC20 token address
   address public immutable token;
 
-  /// @notice Start block number for vesting calculations
-  uint256 public immutable startBlock;
+  /// @notice Start block number for vote vesting calculations
+  uint256 public immutable startV;
 
-  /// @notice Duration of the vesting in blocks
-  uint256 public immutable durationInBlocks;
+  /// @notice Duration of the vote vesting in blocks
+  uint256 public immutable durationV;
 
-  /// @notice End block number, used only from UI
-  uint256 public immutable endsAt;
+  /// @notice End vote vesting block number
+  uint256 public immutable endV;
+
+  /// @notice Start block number for token vesting calculations
+  uint256 public immutable startT;
+
+  /// @notice Duration of the token vesting in blocks
+  uint256 public immutable durationT;
+
+  /// @notice End token block number, used only from UI
+  uint256 public immutable endT;
 
   /// @notice Number of the vesting contract members, used only from UI
   uint256 public immutable memberCount;
@@ -80,47 +106,53 @@ contract PPVesting is CvpInterface {
   /// @notice Member details by their address
   mapping(address => Member) public members;
 
-  /// @notice A record of unclaimed balance checkpoints for each member, by index
+  /// @notice A record of vote checkpoints for each member, by index
   mapping(address => mapping(uint32 => Checkpoint)) public checkpoints;
 
   /// @notice The number of checkpoints for each member
   mapping(address => uint32) public numCheckpoints;
 
-  modifier onlyOwner() {
-    require(msg.sender == owner, "PPVesting::onlyOwner: Check failed");
-    _;
-  }
+  /// @notice Vote delegations
+  mapping(address => address) public voteDelegations;
 
   /**
    * @notice Constructs a new vesting contract
    * @dev It's up to a deployer to allocate the correct amount of ERC20 tokens on this contract
-   * @param _owner The initial owner address
    * @param _tokenAddress The ERC20 token address to use with this vesting contract
-   * @param _startBlock The block number when the vesting period starts
-   * @param _durationInBlocks The number of blocks the vesting period should last
+   * @param _startV The block number when the vote vesting period starts
+   * @param _durationV The number of blocks the vote vesting period should last
+   * @param _startT The block number when the token vesting period starts
+   * @param _durationT The number of blocks the token vesting period should last
    * @param _memberList The list of addresses to distribute tokens to
    * @param _amountPerMember The number of tokens to distribute to each vesting contract member
    */
   constructor(
-    address _owner,
     address _tokenAddress,
-    uint256 _startBlock,
-    uint256 _durationInBlocks,
+    uint256 _startV,
+    uint256 _durationV,
+    uint256 _startT,
+    uint256 _durationT,
     address[] memory _memberList,
     uint96 _amountPerMember
   ) public {
-    require(_durationInBlocks > 1, "PPVesting: Invalid durationInBlocks");
-    require(_owner != address(0), "PPVesting: Invalid owner address");
+    require(_durationV > 1, "PPVesting: Invalid durationV");
+    require(_durationT > 1, "PPVesting: Invalid durationT");
+    require(_startV < _startT, "PPVesting: Requires startV < startT");
+    require((_startV + _durationV) <= (_startT + _durationT), "PPVesting: Requires endV <= endT");
     require(_amountPerMember > 0, "PPVesting: Invalid amount per member");
     require(IERC20(_tokenAddress).totalSupply() > 0, "PPVesting: Missing supply of the token");
 
-    owner = _owner;
     token = _tokenAddress;
 
-    startBlock = _startBlock;
-    durationInBlocks = _durationInBlocks;
+    startV = _startV;
+    durationV = _durationV;
+    endV = _startV + _durationV;
+
+    startT = _startT;
+    durationT = _durationT;
+    endT = _startT + _durationT;
+
     amountPerMember = _amountPerMember;
-    endsAt = _startBlock + _durationInBlocks;
 
     uint256 len = _memberList.length;
     require(len > 0, "PPVesting: Empty member list");
@@ -135,36 +167,75 @@ contract PPVesting is CvpInterface {
   }
 
   /**
-   * @notice Checks whether the vesting period has started or not
-   * @return true If the vesting period has started
+   * @notice Checks whether the vote vesting period has started or not
+   * @return true If the vote vesting period has started
    */
-  function hasStarted() external view returns (bool) {
-    return block.number >= startBlock;
+  function hasVoteVestingStarted() external view returns (bool) {
+    return block.number >= startV;
   }
 
   /**
-   * @notice Checks whether the vesting period has ended or not
-   * @return true If the vesting period has ended
+   * @notice Checks whether the vote vesting period has ended or not
+   * @return true If the vote vesting period has ended
    */
-  function hasEnded() external view returns (bool) {
-    return block.number >= endsAt;
+  function hasVoteVestingEnded() external view returns (bool) {
+    return block.number >= endV;
   }
 
   /**
-   * @notice Provides information about a member unclaimed balance in order to use it in voting contract
+   * @notice Checks whether the token vesting period has started or not
+   * @return true If the token vesting period has started
+   */
+  function hasTokenVestingStarted() external view returns (bool) {
+    return block.number >= startT;
+  }
+
+  /**
+   * @notice Checks whether the token vesting period has ended or not
+   * @return true If the token vesting period has ended
+   */
+  function hasTokenVestingEnded() external view returns (bool) {
+    return block.number >= endT;
+  }
+
+  /**
+   * @notice Returns the address a _voteHolder delegated their votes to
+   * @param _voteHolder The address to fetch delegate for
+   * @return address The delegate address
+   */
+  function getVoteUser(address _voteHolder) public view returns (address) {
+    address currentDelegate = voteDelegations[_voteHolder];
+    if (currentDelegate == address(0)) {
+      return _voteHolder;
+    }
+    return currentDelegate;
+  }
+
+  /**
+   * @notice Provides debugging information about the last cached votes checkpoint with no other conditions
+   * @dev This method remains only for debugging purposes. For actual vote information use `getPriorVotes()`
+   * @param _member The member address to get votes for
+   */
+  function debugLastCachedVotes(address _member) public view returns (uint256) {
+    uint32 dstRepNum = numCheckpoints[_member];
+    return dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
+  }
+
+  /**
+   * @notice Provides information about a member already claimed votes
    * @dev Behaves like a CVP delegated balance, but with a member unclaimed balance
    * @dev Block number must be a finalized block or else this function will revert to prevent misinformation
-   * @dev Block number must be greater than the start block number or else this function
+   * @dev Block number must be greater than the vote start block number or else this function
    *      will revert to prevent misinformation
-   * @dev Returns 0 for non-members
-   * @dev This method is a copy from CVP token with changes marked with XXX
+   * @dev Returns 0 for non-member addresses, even for previously valid ones
+   * @dev This method is a copy from CVP token with several modifications
    * @param account The address of the member to check
    * @param blockNumber The block number to get the vote balance at
    * @return The number of votes the account had as of the given block
    */
-  function getPriorVotes(address account, uint256 blockNumber) external override view returns (uint96) {
+  function getPriorVotes(address account, uint256 blockNumber) public override view returns (uint96) {
     require(blockNumber < block.number, "PPVesting::getPriorVotes: Not yet determined");
-    require(blockNumber > startBlock, "PPVesting::getPriorVotes: Can't be before/equal the startBlock");
+    require(blockNumber > startV, "PPVesting::getPriorVotes: Can't be before/equal the startV");
 
     uint32 nCheckpoints = numCheckpoints[account];
 
@@ -173,9 +244,14 @@ contract PPVesting is CvpInterface {
       return 0;
     }
 
-    // First check (A member has not claimed any tokens yet) OR (The blockNumber is before the first checkpoint)
+    // (Vote vesting at this blockNumber has ended)
+    if (blockNumber > endV) {
+      return 0;
+    }
+
+    // (A member has not claimed any tokens yet) OR (The blockNumber is before the first checkpoint)
     if (nCheckpoints == 0 || checkpoints[account][0].fromBlock > blockNumber) {
-      return uint96(amountPerMember);
+      return 0;
     }
 
     // Next check most recent balance
@@ -200,60 +276,89 @@ contract PPVesting is CvpInterface {
     return checkpoints[account][lower].votes;
   }
 
-  /*** Available to Withdraw calculation ***/
+  /*** Available to Claim calculation ***/
 
   /**
-   * @notice Returns available amount for withdrawal in the next mined block
+   * @notice Returns available amount for a claim in the next mined block
    *         by a given member based on the current contract values
    * @param _member The member address to return available balance for
-   * @return The available amount for withdrawal in the next block
+   * @return The available amount for a claim in the next block
    */
-  function availableToWithdrawForMemberInTheNextBlock(address _member) external view returns (uint256) {
+  function getAvailableTokensForMemberInTheNextBlock(address _member) external view returns (uint256) {
     Member storage member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return availableToWithdraw(block.number + 1, startBlock, amountPerMember, durationInBlocks, member.alreadyClaimed);
+    return getAvailable(block.number + 1, startT, amountPerMember, durationT, member.alreadyClaimedTokens);
   }
 
   /**
-   * @notice Returns available amount for withdrawal by a given member in the current block
+   * @notice Returns available token amount for a claim by a given member in the current block
    *         based on the current contract values
    * @param _member The member address to return available balance for
-   * @return The available amount for withdrawal in the current block
+   * @return The available amount for a claim in the current block
    */
-  function availableToWithdrawForMember(address _member) external view returns (uint256) {
+  function getAvailableTokensForMember(address _member) external view returns (uint256) {
     Member storage member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return availableToWithdrawFor(member.alreadyClaimed);
+    return getAvailableTokens(member.alreadyClaimedTokens);
   }
 
   /**
-   * @notice Returns available amount for withdrawal based on the current contract values
+   * @notice Returns available vote amount for a claim by a given member in the current block
+   *         based on the current contract values
+   * @param _member The member address to return available balance for
+   * @return The available amount for a claim in the current block
+   */
+  function getAvailableVotesForMember(address _member) external view returns (uint256) {
+    Member storage member = members[_member];
+    if (member.active == false) {
+      return 0;
+    }
+
+    return getAvailableVotes(member.alreadyClaimedVotes);
+  }
+
+  /**
+   * @notice Returns available token amount for a claim based on the current contract values
    *         and an already claimed amount input
    * @dev Will return amountPerMember for non-members, so an external check is required for this case
    * @param _alreadyClaimed amount
-   * @return The available amount for withdrawal
+   * @return The available amount for claim
    */
-  function availableToWithdrawFor(uint256 _alreadyClaimed) public view returns (uint256) {
-    return availableToWithdraw(block.number, startBlock, amountPerMember, durationInBlocks, _alreadyClaimed);
+  function getAvailableTokens(uint256 _alreadyClaimed) public view returns (uint256) {
+    return getAvailable(block.number, startT, amountPerMember, durationT, _alreadyClaimed);
   }
 
   /**
-   * @notice Calculates available amount for withdrawal
+   * @notice Returns available vote amount for claim based on the current contract values
+   *         and an already claimed amount input
+   * @dev Will return amountPerMember for non-members, so an external check is required for this case
+   * @param _alreadyClaimed amount
+   * @return The available amount for claim
+   */
+  function getAvailableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
+    if (block.number > endV) {
+      return 0;
+    }
+    return getAvailable(block.number, startV, amountPerMember, durationV, _alreadyClaimed);
+  }
+
+  /**
+   * @notice Calculates available amount for a claim
    * @dev A pure function which doesn't reads anything from state
    * @param _now A block number to calculate the available amount
    * @param _startBlock The vesting period start block number
    * @param _amountPerMember The amount of ERC20 tokens to be distributed to each member
    *         during this vesting period
    * @param _alreadyClaimed The amount of tokens already claimed by a member
-   * @return The available amount for withdrawal
+   * @return The available amount for a claim
    */
-  function availableToWithdraw(
+  function getAvailable(
     uint256 _now,
     uint256 _startBlock,
     uint256 _amountPerMember,
@@ -275,89 +380,209 @@ contract PPVesting is CvpInterface {
     return accrued.sub(_alreadyClaimed);
   }
 
-  /*** Owner Methods ***/
-
-  // @notice Owner delegates total unclaimed balance
-  function delegateVote(address _to) external onlyOwner {
-    emit DelegateVote(_to);
-    ICRV(token).delegate(_to);
-  }
-
-  // @notice Owner immediately transfers ownership to another address
-  function transferOwnership(address _to) external onlyOwner {
-    emit TransferOwnership(msg.sender, _to);
-    owner = _to;
-  }
-
   /*** Member Methods ***/
 
   /**
-   * @notice An active member withdraws a distributed amount of ERC20 tokens
+   * @notice An active member claims a distributed amount of votes
    * @dev Caches unclaimed balance per block number which could be used by voting contract
-   * @param _to address to withdraw ERC20 tokens to
+   * @param _to address to claim votes to
    */
-  function withdraw(address _to) external {
-    Member storage member = members[msg.sender];
-    require(member.active == true, "PPVesting::withdraw: User not active");
+  function claimVotes(address _to) external {
+    Member memory member = members[_to];
+    require(member.active == true, "PPVesting::claimVotes: User not active");
 
-    uint256 bigAmount = availableToWithdrawFor(member.alreadyClaimed);
-    require(bigAmount > 0, "PPVesting::withdraw: Nothing to withdraw");
-    uint96 amount = safe96(bigAmount, "PPVesting::withdraw: Amount overflow");
+    uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
+
+    require(block.number <= endV, "PPVesting::claimVotes: Vote vesting has ended");
+    require(votes > 0, "PPVesting::claimVotes: Nothing to claim");
+
+    _claimVotes(_to, member, votes);
+  }
+
+  function _claimVotes(
+    address _memberAddress,
+    Member memory _member,
+    uint256 _availableVotes
+  ) internal {
+    uint96 newAlreadyClaimedVotes;
+
+    if (_availableVotes > 0) {
+      uint96 amount = safe96(_availableVotes, "PPVesting::_claimVotes: Amount overflow");
+
+      // member.alreadyClaimed += amount
+      newAlreadyClaimedVotes = add96(
+        _member.alreadyClaimedVotes,
+        amount,
+        "PPVesting::claimVotes: newAlreadyClaimed overflow"
+      );
+      members[_memberAddress].alreadyClaimedVotes = newAlreadyClaimedVotes;
+    } else {
+      newAlreadyClaimedVotes = _member.alreadyClaimedVotes;
+    }
+
+    // Step #1. Get the accrued votes value
+    // lastMemberAdjustedVotes = claimedVotesBeforeTx - claimedTokensBeforeTx
+    uint96 lastMemberAdjustedVotes = sub96(
+      _member.alreadyClaimedVotes,
+      _member.alreadyClaimedTokens,
+      "PPVesting::_claimVotes: lastMemberAdjustedVotes overflow"
+    );
+
+    // Get the adjusted value in relation to the member itself.
+    // `adjustedVotes = votesAfterTx - claimedTokensBeforeTheCalculation`
+    // `claimedTokensBeforeTheCalculation` could be updated earlier in claimVotes() method in the same tx
+    uint96 adjustedVotes = sub96(
+      newAlreadyClaimedVotes,
+      members[_memberAddress].alreadyClaimedTokens,
+      "PPVesting::_claimVotes: adjustedVotes underflow"
+    );
+
+    address delegate = getVoteUser(_memberAddress);
+    uint96 diff;
+
+    // Step #3. Apply the adjusted value in relation to the delegate
+    if (adjustedVotes > lastMemberAdjustedVotes) {
+      diff = sub96(adjustedVotes, lastMemberAdjustedVotes, "PPVesting::_claimVotes: Positive diff underflow");
+      _addDelegatedVotesCache(delegate, diff);
+    } else if (lastMemberAdjustedVotes > adjustedVotes) {
+      diff = sub96(lastMemberAdjustedVotes, adjustedVotes, "PPVesting::_claimVotes: Negative diff underflow");
+      _subDelegatedVotesCache(delegate, diff);
+    }
+
+    emit ClaimVotes(
+      _memberAddress,
+      delegate,
+      _member.alreadyClaimedVotes,
+      _member.alreadyClaimedTokens,
+      newAlreadyClaimedVotes,
+      members[_memberAddress].alreadyClaimedTokens,
+      lastMemberAdjustedVotes,
+      adjustedVotes,
+      diff
+    );
+  }
+
+  /**
+   * @notice An active member claims a distributed amount of ERC20 tokens
+   * @param _to address to claim ERC20 tokens to
+   */
+  function claimTokens(address _to) external {
+    Member memory member = members[msg.sender];
+    require(member.active == true, "PPVesting::claimTokens: User not active");
+
+    uint256 bigAmount = getAvailableTokens(member.alreadyClaimedTokens);
+    require(bigAmount > 0, "PPVesting::claimTokens: Nothing to claim");
+    uint96 amount = safe96(bigAmount, "PPVesting::claimTokens: Amount overflow");
 
     // member.alreadyClaimed += amount
-    uint96 newAlreadyClaimed = add96(member.alreadyClaimed, amount, "PPVesting::withdraw: NewAlreadyClaimed overflow");
-    member.alreadyClaimed = newAlreadyClaimed;
+    uint96 newAlreadyClaimed = add96(
+      member.alreadyClaimedTokens,
+      amount,
+      "PPVesting::claimTokens: NewAlreadyClaimed overflow"
+    );
+    members[msg.sender].alreadyClaimedTokens = newAlreadyClaimed;
 
-    // Cache unclaimed member balance
-    _subUnclaimedCache(msg.sender, amount);
+    uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
-    emit Withdraw(msg.sender, _to, amount, newAlreadyClaimed);
+    if (block.number <= endV) {
+      _claimVotes(msg.sender, member, votes);
+    }
+
+    emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
 
     IERC20(token).transfer(_to, bigAmount);
   }
 
   /**
-   * @notice Transfers a vested right to member funds to another address
+   * @notice Delegates an already claimed votes amount to the given address
+   * @param _to address to delegate votes
+   */
+  function delegateVotes(address _to) external {
+    Member memory member = members[msg.sender];
+    require(_to != address(0), "PPVesting::delegateVotes: Can't delegate to 0 address");
+    require(member.active == true, "PPVesting::delegateVotes: msg.sender not active");
+    require(members[_to].active == true, "PPVesting::delegateVotes: _to user not active");
+
+    address currentDelegate = getVoteUser(msg.sender);
+    require(_to != currentDelegate, "PPVesting::delegateVotes: Already delegated to this address");
+
+    voteDelegations[msg.sender] = _to;
+    uint96 adjustedVotes = sub96(
+      member.alreadyClaimedVotes,
+      member.alreadyClaimedTokens,
+      "PPVesting::claimVotes: AdjustedVotes underflow"
+    );
+
+    _subDelegatedVotesCache(currentDelegate, adjustedVotes);
+    _addDelegatedVotesCache(_to, adjustedVotes);
+
+    emit DelegateVotes(msg.sender, _to, currentDelegate, adjustedVotes);
+  }
+
+  /**
+   * @notice Transfers a vested rights for a member funds to another address
    * @dev A new member won't have any votes for a period between a start block and a current block
    * @param _to address to transfer a vested right to
    */
   function transfer(address _to) external {
-    address msgSender = msg.sender;
-    Member storage from = members[msgSender];
-    Member storage to = members[_to];
+    Member memory from = members[msg.sender];
+    Member memory to = members[_to];
 
-    uint96 alreadyClaimed = from.alreadyClaimed;
+    uint96 alreadyClaimedTokens = from.alreadyClaimedTokens;
+    uint96 alreadyClaimedVotes = from.alreadyClaimedVotes;
 
     require(from.active == true, "PPVesting::transfer: From member is inactive");
     require(to.active == false, "PPVesting::transfer: To address is already active");
     require(to.transferred == false, "PPVesting::transfer: To address has been already used");
 
-    members[msgSender] = Member({ active: false, transferred: true, alreadyClaimed: 0 });
+    members[msg.sender] = Member({ active: false, transferred: true, alreadyClaimedVotes: 0, alreadyClaimedTokens: 0 });
+    members[_to] = Member({
+      active: true,
+      transferred: false,
+      alreadyClaimedVotes: alreadyClaimedVotes,
+      alreadyClaimedTokens: alreadyClaimedTokens
+    });
 
-    members[_to] = Member({ active: true, transferred: false, alreadyClaimed: alreadyClaimed });
+    address currentDelegate = voteDelegations[msg.sender];
 
-    uint32 startBlockNumber = safe32(startBlock, "PPVesting::transfer: Block number exceeds 32 bits");
+    uint32 startBlockNumber = safe32(startV, "PPVesting::transfer: Block number exceeds 32 bits");
     uint32 currentBlockNumber = safe32(block.number, "PPVesting::transfer: Block number exceeds 32 bits");
 
     checkpoints[_to][0] = Checkpoint(startBlockNumber, 0);
-    checkpoints[_to][1] = Checkpoint(
-      currentBlockNumber,
-      sub96(amountPerMember, alreadyClaimed, "PPVesting::transfer: To 1st checkpoint overflow")
-    );
-    numCheckpoints[_to] += 2;
+    if (currentDelegate == address(0)) {
+      uint96 adjustedVotes = sub96(
+        from.alreadyClaimedVotes,
+        from.alreadyClaimedTokens,
+        "PPVesting::claimVotes: AdjustedVotes underflow"
+      );
+      _subDelegatedVotesCache(msg.sender, adjustedVotes);
+      checkpoints[_to][1] = Checkpoint(currentBlockNumber, adjustedVotes);
+      numCheckpoints[_to] = 2;
+    } else {
+      numCheckpoints[_to] = 1;
+    }
 
-    _subUnclaimedCache(
-      msgSender,
-      sub96(amountPerMember, alreadyClaimed, "PPVesting::transfer: Unclaimed msgSender overflow")
-    );
+    voteDelegations[_to] = voteDelegations[msg.sender];
+    delete voteDelegations[msg.sender];
 
-    emit Transfer(msgSender, _to, startBlockNumber, alreadyClaimed);
+    Member memory toMember = members[_to];
+    uint256 votes = getAvailableVotes(toMember.alreadyClaimedVotes);
+    _claimVotes(_to, toMember, votes);
+
+    emit Transfer(msg.sender, _to, startBlockNumber, alreadyClaimedVotes, alreadyClaimedTokens, currentDelegate);
   }
 
-  function _subUnclaimedCache(address _member, uint96 _subAmount) internal {
+  function _subDelegatedVotesCache(address _member, uint96 _subAmount) internal {
     uint32 dstRepNum = numCheckpoints[_member];
-    uint96 dstRepOld = dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : uint96(amountPerMember);
+    uint96 dstRepOld = dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
     uint96 dstRepNew = sub96(dstRepOld, _subAmount, "PPVesting::_cacheUnclaimed: Sub amount overflows");
+    _writeCheckpoint(_member, dstRepNum, dstRepOld, dstRepNew);
+  }
+
+  function _addDelegatedVotesCache(address _member, uint96 _addAmount) internal {
+    uint32 dstRepNum = numCheckpoints[_member];
+    uint96 dstRepOld = dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
+    uint96 dstRepNew = add96(dstRepOld, _addAmount, "PPVesting::_cacheUnclaimed: Add amount overflows");
     _writeCheckpoint(_member, dstRepNum, dstRepOld, dstRepNew);
   }
 

@@ -5,7 +5,6 @@ usePlugin('solidity-coverage');
 usePlugin('buidler-contract-sizer');
 usePlugin('buidler-gas-reporter');
 
-
 const config = {
   analytics: {
     enabled: false,
@@ -17,7 +16,7 @@ const config = {
   defaultNetwork: 'buidlerevm',
   gasReporter: {
     currency: 'USD',
-    enabled: !!(process.env.REPORT_GAS)
+    enabled: !!process.env.REPORT_GAS,
   },
   mocha: {},
   networks: {
