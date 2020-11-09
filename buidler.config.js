@@ -5,6 +5,20 @@ usePlugin('solidity-coverage');
 usePlugin('buidler-contract-sizer');
 usePlugin('buidler-gas-reporter');
 
+require('./tasks/deployVesting');
+
+const fs = require('fs');
+const homeDir = require('os').homedir();
+const _ = require('lodash');
+
+function getAccounts(network) {
+  const fileName = homeDir + '/.ethereum/' + network;
+  if(!fs.existsSync(fileName)) {
+    return [];
+  }
+  return [_.trim('0x' + fs.readFileSync(fileName, {encoding: 'utf8'}))];
+}
+
 const config = {
   analytics: {
     enabled: false,
@@ -25,6 +39,11 @@ const config = {
     },
     local: {
       url: 'http://127.0.0.1:8545',
+    },
+    kovan: {
+      url: 'https://kovan-eth.compound.finance',
+      gasPrice: 10 ** 9,
+      accounts: getAccounts('kovan')
     },
     coverage: {
       url: 'http://127.0.0.1:8555',

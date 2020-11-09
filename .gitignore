@@ -11,6 +11,7 @@ dist/
 lib/
 node_modules/
 typechain/
+data/
 
 # files
 *.env
