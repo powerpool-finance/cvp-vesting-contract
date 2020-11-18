@@ -638,6 +638,7 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
     it('should allow transferring after the token vesting period ends', async function () {
       await time.advanceBlockTo(endT + 2);
       await vesting.transfer(bob, { from: member1 });
+      await time.advanceBlockTo(endT + 5);
       expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
 
       const member1Details = await vesting.members(member1);
@@ -652,6 +653,14 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
       // nothing had been claimed during a transfer since the vote vesting period has ended
       expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(0));
       expect(bobDetails.alreadyClaimedTokens).to.be.equal('0');
+      expect(await vesting.getPriorVotes(bob, endT)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, endT + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, endT + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, endT + 3)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, endT)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, endT + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, endT + 2)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, endT + 3)).to.be.equal(ether(0));
     });
 
     it('should correctly transfer with non-delegated votes and some claimed tokens', async function () {
@@ -763,7 +772,7 @@ contract('PPVesting Unit Tests', function ([, member1, member2, member3, member4
       expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
       // and 750 tokens was claimed earlier
       expect(await vesting.debugLastCachedVotes(bob)).to.be.equal(ether(4250));
-      expect(await vesting.getPriorVotes(bob, delegatedBackAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(bob, delegatedBackAt)).to.be.equal(ether(4250));
     });
 
     it('should deny non-active member calling the method tokens', async function () {
