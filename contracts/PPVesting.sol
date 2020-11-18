@@ -428,7 +428,7 @@ contract PPVesting is CvpInterface {
       "PPVesting::_claimVotes: lastMemberAdjustedVotes overflow"
     );
 
-    // Get the adjusted value in relation to the member itself.
+    // Step #2. Get the adjusted value in relation to the member itself.
     // `adjustedVotes = votesAfterTx - claimedTokensBeforeTheCalculation`
     // `claimedTokensBeforeTheCalculation` could be updated earlier in claimVotes() method in the same tx
     uint96 adjustedVotes = sub96(
