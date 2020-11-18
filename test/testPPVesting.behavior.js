@@ -28,7 +28,7 @@ contract('PPVesting Behaviour Tests', function ([, member1, member2, member3, al
 
   beforeEach(async function () {
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
-    await erc20.mint(vault, ether(150000));
+    await erc20.mint(vault, ether(1500000));
 
     // Setup...
     const amountPerMember = ether('2500');
@@ -222,6 +222,116 @@ contract('PPVesting Behaviour Tests', function ([, member1, member2, member3, al
       );
       expect(await vesting.getPriorVotes(member1, startT + 4)).to.be.equal(ether(250));
       expect(await vesting.getPriorVotes(member1, startT + 5)).to.be.equal(ether(0));
+    });
+
+    it.only('should allow case with V1,2/T2,3,4 proportion', async function () {
+      // Setup...
+      const amountPerMember = ether('50000');
+      currentBlock = await time.latestBlock();
+
+      startV = parseInt(currentBlock) + 100;
+      durationV = 120;
+
+      startT = parseInt(currentBlock) + 160;
+      durationT = 180;
+
+      endT = startT + durationT;
+
+      vesting = await PPVesting.new(
+        erc20.address,
+        startV,
+        durationV,
+        startT,
+        durationT,
+        [member1, member2, member3],
+        amountPerMember,
+      );
+
+      await erc20.transfer(vesting.address, ether(150000), { from: vault });
+
+      // Step #1
+      await time.advanceBlockTo(startV + 14);
+      await vesting.claimVotes(member1);
+      expect(await erc20.balanceOf(alice)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member1, startV + 1)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, startV + 4)).to.be.equal(ether(0));
+
+      // Step #2
+      await time.advanceBlockTo(startV + 16);
+      expect(await vesting.getPriorVotes(member1, startV + 15)).to.be.equal(ether(6250));
+      await expect(vesting.getPriorVotes(member1, startT)).to.be.revertedWith(
+        'PPVesting::getPriorVotes: Not yet determined',
+      );
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
+
+      // Step #3
+      await time.advanceBlockTo(startV + 59);
+      await vesting.claimVotes(member1);
+      await time.advanceBlockTo(startV + 61);
+      expect(await vesting.getPriorVotes(member1, startV + 60)).to.be.equal(ether(25000));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('2');
+
+      // Step #4
+      await time.advanceBlockTo(startV + 74);
+      await vesting.claimVotes(member1);
+      await time.advanceBlockTo(startV + 76);
+      expect(await vesting.getPriorVotes(member1, startV + 75)).to.be.equal(ether(31250));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('3');
+
+      // Step #5
+      await time.advanceBlockTo(startV + 89);
+      await vesting.claimTokens(member1, { from: member1 });
+      await time.advanceBlockTo(startV + 91);
+      expect(await vesting.getPriorVotes(member1, startV + 90)).to.be.equal('29166666666666666666667');
+      expect(await erc20.balanceOf(member1)).to.be.equal('8333333333333333333333');
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('4');
+
+      // Step #6
+      await time.advanceBlockTo(startV + 104);
+      await vesting.claimTokens(member1, { from: member1 });
+      await time.advanceBlockTo(startV + 106);
+      expect(await vesting.getPriorVotes(member1, startV + 105)).to.be.equal(ether(31250));
+      expect(await erc20.balanceOf(member1)).to.be.equal(ether(12500));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('5');
+
+      // Step #7
+      await time.advanceBlockTo(startV + 119);
+      await vesting.claimTokens(member1, { from: member1 });
+      await time.advanceBlockTo(startV + 121);
+      expect(await vesting.getPriorVotes(member1, startV + 120)).to.be.equal('33333333333333333333334');
+      expect(await erc20.balanceOf(member1)).to.be.equal('16666666666666666666666');
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('6');
+
+      // Step #8 (member2 claims his tokens)
+      await time.advanceBlockTo(startV + 149);
+      await vesting.claimTokens(member1, { from: member1 });
+      await time.advanceBlockTo(startV + 151);
+      expect(await vesting.getPriorVotes(member1, startV + 150)).to.be.equal(ether(25000));
+      expect(await erc20.balanceOf(member1)).to.be.equal(ether(25000));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('7');
+
+      await vesting.claimTokens(member2, { from: member2 });
+      await time.advanceBlockTo(startV + 153);
+      expect(await vesting.getPriorVotes(member2, startV + 152)).to.be.equal('24444444444444444444445');
+      expect(await erc20.balanceOf(member2)).to.be.equal('25555555555555555555555');
+      expect(await vesting.numCheckpoints(member2)).to.be.equal('1');
+
+      // Step #9
+      await time.advanceBlockTo(startV + 239);
+      await vesting.claimTokens(member1, { from: member1 });
+      await time.advanceBlockTo(startV + 241);
+      expect(await vesting.getPriorVotes(member1, startV + 240)).to.be.equal(ether(0));
+      expect(await erc20.balanceOf(member1)).to.be.equal(ether(50000));
+      expect(await vesting.numCheckpoints(member1)).to.be.equal('8');
+
+      // Step #10 (member3 claims his votes)
+      await expect(vesting.claimTokens(member1, { from: member1 }))
+        .to.be.revertedWith('PPVesting::claimTokens: Nothing to claim');
+      await vesting.claimTokens(member3, { from: member3 });
+      await time.advanceBlockTo(startV + 251);
+      expect(await vesting.getPriorVotes(member3, startV + 250)).to.be.equal(ether(0));
+      expect(await erc20.balanceOf(member3)).to.be.equal(ether(50000));
+      expect(await vesting.numCheckpoints(member3)).to.be.equal('0');
     });
 
     it('should allow withdrawing tokens at the pre-last block', async function () {
