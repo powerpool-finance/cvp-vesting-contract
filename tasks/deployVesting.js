@@ -1,6 +1,7 @@
 usePlugin('@nomiclabs/buidler-truffle5');
 
 const fs = require('fs');
+const _ = require('lodash');
 
 task('deploy-vesting', 'Deploy Vesting')
   .setAction(async () => {
@@ -52,6 +53,19 @@ task('deploy-vesting', 'Deploy Vesting')
 
     console.log('vesting.address', vesting.address);
     console.log('memberCount', (await vesting.memberCount()).toString());
+
+    fs.writeFileSync(
+      './tmp/latestVestingDeployArguments',
+      web3.eth.abi.encodeParameters(_.find(vesting.contract._jsonInterface, {type: 'constructor'}).inputs.map(i => i.type), [
+        cvp.address,
+        config.startV,
+        config.durationV,
+        config.startT,
+        config.durationT,
+        members,
+        web3.utils.toWei('50000', 'ether')
+      ])
+    );
 
     async function getBlockNumber(addBlocks) {
       return (await web3.eth.getBlockNumber()) + addBlocks;
