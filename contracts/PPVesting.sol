@@ -245,7 +245,7 @@ contract PPVesting is CvpInterface {
     }
 
     // (Vote vesting at this blockNumber has ended)
-    if (blockNumber > endV) {
+    if (blockNumber > endT) {
       return 0;
     }
 
@@ -342,7 +342,7 @@ contract PPVesting is CvpInterface {
    * @return The available amount for claim
    */
   function getAvailableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
-    if (block.number > endV) {
+    if (block.number > endT) {
       return 0;
     }
     return getAvailable(block.number, startV, amountPerMember, durationV, _alreadyClaimed);
@@ -393,7 +393,7 @@ contract PPVesting is CvpInterface {
 
     uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
-    require(block.number <= endV, "PPVesting::claimVotes: Vote vesting has ended");
+    require(block.number <= endT, "PPVesting::claimVotes: Vote vesting has ended");
     require(votes > 0, "PPVesting::claimVotes: Nothing to claim");
 
     _claimVotes(_to, member, votes);
@@ -428,7 +428,7 @@ contract PPVesting is CvpInterface {
       "PPVesting::_claimVotes: lastMemberAdjustedVotes overflow"
     );
 
-    // Get the adjusted value in relation to the member itself.
+    // Step #2. Get the adjusted value in relation to the member itself.
     // `adjustedVotes = votesAfterTx - claimedTokensBeforeTheCalculation`
     // `claimedTokensBeforeTheCalculation` could be updated earlier in claimVotes() method in the same tx
     uint96 adjustedVotes = sub96(
@@ -484,7 +484,7 @@ contract PPVesting is CvpInterface {
 
     uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
 
-    if (block.number <= endV) {
+    if (block.number <= endT) {
       _claimVotes(msg.sender, member, votes);
     }
 
