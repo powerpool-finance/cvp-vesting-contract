@@ -12,14 +12,7 @@ task('deploy-vesting', 'Deploy Vesting')
     const [deployer] = await web3.eth.getAccounts();
     const sendOptions = {from: deployer};
 
-    const members = [];
-    const membersCsv = fs.readFileSync('data/vestingMembers_42.csv', {encoding: 'utf8'});
-    membersCsv.split(/\r\n|\r|\n/g).forEach((line) => {
-      const split = line.split(',');
-      if (web3.utils.isAddress(split[0])) {
-        members.push(split[0]);
-      }
-    });
+    const members = getAddresses('testers-beta').concat(getAddresses('testers-gamma'));
 
     const configByNetworkId = {
       '1': {
@@ -38,7 +31,8 @@ task('deploy-vesting', 'Deploy Vesting')
       }
     };
 
-    const config = configByNetworkId[await web3.eth.net.getId()];
+    const networkId = parseInt(await web3.eth.net.getId());
+    const config = configByNetworkId[networkId];
     const cvp = await CVP.at(config.cvpAddress);
 
     const vesting = await PPVesting.new(
@@ -52,12 +46,26 @@ task('deploy-vesting', 'Deploy Vesting')
       sendOptions
     );
 
-    await cvp.transfer(vesting.address, web3.utils.toWei('500000', 'ether'));
+    if (networkId !== 1) {
+      await cvp.transfer(vesting.address, web3.utils.toWei('500000', 'ether'));
+    }
 
     console.log('vesting.address', vesting.address);
     console.log('memberCount', (await vesting.memberCount()).toString());
 
     async function getBlockNumber(addBlocks) {
       return (await web3.eth.getBlockNumber()) + addBlocks;
+    }
+
+    function getAddresses(filename) {
+      const addresses = [];
+      const membersCsv = fs.readFileSync('data/' + filename + '.csv', {encoding: 'utf8'});
+      membersCsv.split(/\r\n|\r|\n/g).forEach((line) => {
+        const split = line.split(',');
+        if (web3.utils.isAddress(split[0])) {
+          addresses.push(split[0]);
+        }
+      });
+      return addresses;
     }
   });

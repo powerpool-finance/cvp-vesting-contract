@@ -40,6 +40,12 @@ const config = {
     local: {
       url: 'http://127.0.0.1:8545',
     },
+    mainnet: {
+      url: 'https://mainnet-eth.compound.finance',
+      gasPrice: 99 * 10 ** 9,
+      accounts: getAccounts('mainnet'),
+      gasMultiplier: 2,
+    },
     kovan: {
       url: 'https://kovan-eth.compound.finance',
       gasPrice: 10 ** 9,
