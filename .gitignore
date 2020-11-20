@@ -12,6 +12,7 @@ lib/
 node_modules/
 typechain/
 data/vestingMembers_42.csv
+tmp/
 
 # files
 *.env
