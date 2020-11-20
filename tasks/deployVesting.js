@@ -24,10 +24,10 @@ task('deploy-vesting', 'Deploy Vesting')
     const configByNetworkId = {
       '1': {
         cvpAddress: '0x38e4adb44ef08f22f5b5b76a8f0c2d0dcbe7dca1',
-        startV: await getBlockNumber(300),
-        durationV: 5000,
-        startT: await getBlockNumber(600),
-        durationT: 5000
+        startV: 10966820,
+        durationV: 2372500,
+        startT: 12465437,
+        durationT: 3555500
       },
       '42': {
         cvpAddress: '0x86D0FFCf65eE225217e0Fe85DDB2B79A8CE7eDE2',
