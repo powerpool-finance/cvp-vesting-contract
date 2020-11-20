@@ -11,7 +11,7 @@ dist/
 lib/
 node_modules/
 typechain/
-data/
+data/vestingMembers_42.csv
 
 # files
 *.env
