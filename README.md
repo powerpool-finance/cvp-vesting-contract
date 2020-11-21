@@ -10,6 +10,10 @@ More details in 👉 [Specification](https://github.com/powerpool-finance/powerp
 
 More details in 👉 [Report](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vesting-security.pdf).
 
+## Contracts on Ethereum Main Network
+
+- `PPVesting ` - [0xFD28bE82e453860F41c36029175377F470aF754b](https://etherscan.io/address/0xFD28bE82e453860F41c36029175377F470aF754b).
+
 ## Testing and Development
 
 Use `yarn` or `npm` to run the following npm tasks:
