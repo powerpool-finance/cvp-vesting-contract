@@ -233,7 +233,7 @@ contract PPVesting is CvpInterface {
    * @param blockNumber The block number to get the vote balance at
    * @return The number of votes the account had as of the given block
    */
-  function getPriorVotes(address account, uint256 blockNumber) public override view returns (uint96) {
+  function getPriorVotes(address account, uint256 blockNumber) public view override returns (uint96) {
     require(blockNumber < block.number, "PPVesting::getPriorVotes: Not yet determined");
     require(blockNumber > startV, "PPVesting::getPriorVotes: Can't be before/equal the startV");
 
@@ -422,20 +422,22 @@ contract PPVesting is CvpInterface {
 
     // Step #1. Get the accrued votes value
     // lastMemberAdjustedVotes = claimedVotesBeforeTx - claimedTokensBeforeTx
-    uint96 lastMemberAdjustedVotes = sub96(
-      _member.alreadyClaimedVotes,
-      _member.alreadyClaimedTokens,
-      "PPVesting::_claimVotes: lastMemberAdjustedVotes overflow"
-    );
+    uint96 lastMemberAdjustedVotes =
+      sub96(
+        _member.alreadyClaimedVotes,
+        _member.alreadyClaimedTokens,
+        "PPVesting::_claimVotes: lastMemberAdjustedVotes overflow"
+      );
 
     // Step #2. Get the adjusted value in relation to the member itself.
     // `adjustedVotes = votesAfterTx - claimedTokensBeforeTheCalculation`
     // `claimedTokensBeforeTheCalculation` could be updated earlier in claimVotes() method in the same tx
-    uint96 adjustedVotes = sub96(
-      newAlreadyClaimedVotes,
-      members[_memberAddress].alreadyClaimedTokens,
-      "PPVesting::_claimVotes: adjustedVotes underflow"
-    );
+    uint96 adjustedVotes =
+      sub96(
+        newAlreadyClaimedVotes,
+        members[_memberAddress].alreadyClaimedTokens,
+        "PPVesting::_claimVotes: adjustedVotes underflow"
+      );
 
     address delegate = getVoteUser(_memberAddress);
     uint96 diff;
@@ -475,11 +477,8 @@ contract PPVesting is CvpInterface {
     uint96 amount = safe96(bigAmount, "PPVesting::claimTokens: Amount overflow");
 
     // member.alreadyClaimed += amount
-    uint96 newAlreadyClaimed = add96(
-      member.alreadyClaimedTokens,
-      amount,
-      "PPVesting::claimTokens: NewAlreadyClaimed overflow"
-    );
+    uint96 newAlreadyClaimed =
+      add96(member.alreadyClaimedTokens, amount, "PPVesting::claimTokens: NewAlreadyClaimed overflow");
     members[msg.sender].alreadyClaimedTokens = newAlreadyClaimed;
 
     uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
@@ -507,11 +506,8 @@ contract PPVesting is CvpInterface {
     require(_to != currentDelegate, "PPVesting::delegateVotes: Already delegated to this address");
 
     voteDelegations[msg.sender] = _to;
-    uint96 adjustedVotes = sub96(
-      member.alreadyClaimedVotes,
-      member.alreadyClaimedTokens,
-      "PPVesting::claimVotes: AdjustedVotes underflow"
-    );
+    uint96 adjustedVotes =
+      sub96(member.alreadyClaimedVotes, member.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
 
     _subDelegatedVotesCache(currentDelegate, adjustedVotes);
     _addDelegatedVotesCache(_to, adjustedVotes);
@@ -550,11 +546,8 @@ contract PPVesting is CvpInterface {
 
     checkpoints[_to][0] = Checkpoint(startBlockNumber, 0);
     if (currentDelegate == address(0)) {
-      uint96 adjustedVotes = sub96(
-        from.alreadyClaimedVotes,
-        from.alreadyClaimedTokens,
-        "PPVesting::claimVotes: AdjustedVotes underflow"
-      );
+      uint96 adjustedVotes =
+        sub96(from.alreadyClaimedVotes, from.alreadyClaimedTokens, "PPVesting::claimVotes: AdjustedVotes underflow");
       _subDelegatedVotesCache(msg.sender, adjustedVotes);
       checkpoints[_to][1] = Checkpoint(currentBlockNumber, adjustedVotes);
       numCheckpoints[_to] = 2;
