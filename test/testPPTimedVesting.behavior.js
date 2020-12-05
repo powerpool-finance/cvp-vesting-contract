@@ -1,5 +1,6 @@
 const { ether: etherBN, time } = require('@openzeppelin/test-helpers');
 const { solidity } = require('ethereum-waffle');
+const { evmMine } = require('./helpers');
 
 const chai = require('chai');
 const PPTimedVesting = artifacts.require('PPTimedVesting');
@@ -51,7 +52,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
     await erc20.transfer(vesting.address, ether(30000), { from: vault });
   });
 
-  describe.skip('claimTokens', () => {
+  describe('claimTokens', () => {
     it('should allow a gradual token/votes claims each block', async function () {
       // Step #0
       expect(await erc20.balanceOf(member1)).to.be.equal('0');
@@ -59,7 +60,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
 
       // Step #1
-      await time.increaseTo(startV);
+      await evmMine(startV);
       expect(await vesting.hasVoteVestingStarted()).to.be.true;
 
       await vesting.claimVotes(member1);

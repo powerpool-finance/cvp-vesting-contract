@@ -1,5 +1,6 @@
 const { ether: etherBN, time, constants } = require('@openzeppelin/test-helpers');
 const { solidity } = require('ethereum-waffle');
+const { evmMine } = require('./helpers');
 
 const chai = require('chai');
 const PPTimedVesting = artifacts.require('PPTimedVesting');
@@ -187,7 +188,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe.skip('getAvailableTokens', () => {
+  describe('getAvailableTokens', () => {
     it('should return correct values before the start', async function () {
       expect(await vesting.hasTokenVestingStarted()).to.be.false;
       expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(0));
@@ -195,21 +196,21 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should return correct values on 0th second', async function () {
-      await time.increaseTo(startT);
+      await evmMine(startT);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokens(5000)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the first second after the start', async function () {
-      await time.increaseTo(startT + 1);
+      await evmMine(startT + 1);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(250));
       expect(await vesting.getAvailableTokens(ether(250))).to.be.equal(ether(0));
     });
 
     it('should return correct values on the pre-last second', async function () {
-      await time.increaseTo(startT + parseInt(durationT) - 1);
+      await evmMine(startT + parseInt(durationT) - 1);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.hasTokenVestingEnded()).to.be.false;
       expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(4750));
@@ -218,7 +219,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should return correct values on the last second', async function () {
-      await time.increaseTo(startT + parseInt(durationT));
+      await evmMine(startT + parseInt(durationT));
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.hasTokenVestingEnded()).to.be.true;
       expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(5000));
@@ -227,7 +228,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should return correct values after the last second', async function () {
-      await time.increaseTo(startT + parseInt(durationT) + 5);
+      await evmMine(startT + parseInt(durationT) + 5);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.hasTokenVestingEnded()).to.be.true;
       expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(5000));
@@ -236,7 +237,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe.skip('getAvailableTokensForMember', () => {
+  describe('getAvailableTokensForMember', () => {
     it('should return correct values before the start', async function () {
       expect(await vesting.hasTokenVestingStarted()).to.be.false;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
@@ -246,30 +247,30 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should return correct values on the first second after the start', async function () {
-      await time.increaseTo(startT + 1);
+      await evmMine(startT + 1);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(250));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last second', async function () {
-      await time.increaseTo(startT + parseInt(durationT));
+      await evmMine(startT + parseInt(durationT));
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last second', async function () {
-      await time.increaseTo(startT + parseInt(durationT) + 5);
+      await evmMine(startT + parseInt(durationT) + 5);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
   });
 
-  describe.skip('getAvailableTokensForMemberAt', () => {
+  describe('getAvailableTokensForMemberAt', () => {
     it('should return correct values before the start', async function () {
-      await time.increaseTo(startT);
+      await evmMine(startT);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
 
       let current = (await time.latest()).toNumber();
@@ -280,7 +281,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should return correct values on the last block', async function () {
-      await time.increaseTo(startT + parseInt(durationT));
+      await evmMine(startT + parseInt(durationT));
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
 
       let current = (await time.latest()).toNumber();
@@ -291,7 +292,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should return correct values after the last block', async function () {
-      await time.increaseTo(startT + parseInt(durationT) + 5);
+      await evmMine(startT + parseInt(durationT) + 5);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
 
       let current = (await time.latest()).toNumber();
@@ -302,7 +303,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe.skip('claimVotes', () => {
+  describe('claimVotes', () => {
     beforeEach(async function () {});
 
     it('should deny claiming before the vesting period start', async function () {
@@ -311,14 +312,14 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should deny claiming for a non-active member', async function () {
-      await time.increaseTo(startV + 1);
+      await evmMine(startV + 1);
       await expect(vesting.claimVotes(member4)).to.be.revertedWith('Vesting::claimVotes: User not active');
     });
 
     it('should deny claiming when nothing was assigned', async function () {
       vesting = await PPTimedVesting.new(erc20.address, startV, 10, startT, 15, [member1, member2, member3], 5);
       await erc20.mint(vesting.address, ether(3000));
-      await time.increaseTo(startT + 2);
+      await evmMine(startT + 2);
       await vesting.claimVotes(member1);
       await expect(vesting.claimVotes(member1)).to.be.revertedWith('Vesting::claimVotes: Nothing to claim');
     });
@@ -327,7 +328,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       let firstClaimedAt;
       let secondClaimedAt;
       beforeEach(async function () {
-        await time.increaseTo(startV);
+        await evmMine(startV);
         // 500
         let res = await vesting.claimVotes(member1);
         firstClaimedAt = res.receipt.blockNumber;
@@ -395,7 +396,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       let secondClaimedAt;
       beforeEach(async function () {
         await erc20.transfer(vesting.address, ether(100000), { from: vault });
-        await time.increaseTo(startT);
+        await evmMine(startT);
         // 5000/4000
         let res = await vesting.claimTokens(member1, { from: member1 });
         firstClaimedAt = res.receipt.blockNumber;
@@ -471,7 +472,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe.skip('claimTokens', () => {
+  describe('claimTokens', () => {
     beforeEach(async function () {
       await erc20.transfer(vesting.address, ether(3000), { from: vault });
     });
@@ -484,7 +485,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should deny non-active member withdrawing tokens', async function () {
-      await time.increaseTo(startT + 1);
+      await evmMine(startT + 1);
       await expect(vesting.claimTokens(bob, { from: member4 })).to.be.revertedWith(
         'Vesting::claimTokens: User not active',
       );
@@ -493,7 +494,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     it('should deny claiming when nothing was assigned', async function () {
       vesting = await PPTimedVesting.new(erc20.address, startV, 5, startT, 10, [member1, member2, member3], 5);
       await erc20.mint(vesting.address, ether(3000));
-      await time.increaseTo(startT + 1);
+      await evmMine(startT + 1);
       await vesting.claimTokens(bob, { from: member1 });
       await expect(vesting.claimTokens(bob, { from: member1 })).to.be.revertedWith(
         'Vesting::claimTokens: Nothing to claim',
@@ -501,13 +502,13 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe.skip('delegate', () => {
+  describe('delegate', () => {
     beforeEach(async function () {
       await erc20.transfer(vesting.address, ether(3000), { from: vault });
     });
 
     it('should delegate back and forth from an account with 0 balance', async function () {
-      await time.increaseTo(startV);
+      await evmMine(startV);
       let res = await vesting.delegateVotes(member2, { from: member1 });
       let theBlock = res.receipt.blockNumber;
       await time.increase(1);
@@ -554,7 +555,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should delegate between non-member addresses', async function () {
-      await time.increaseTo(startV + 1);
+      await evmMine(startV + 1);
       await vesting.claimVotes(member1);
       let res = await vesting.claimVotes(member2);
       const firstClaim = res.receipt.blockNumber;
@@ -619,7 +620,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe.skip('transfer', () => {
+  describe('transfer', () => {
     beforeEach(async function () {
       await erc20.transfer(vesting.address, ether(30000), { from: vault });
     });
@@ -641,9 +642,9 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should allow transferring after the token vesting period ends', async function () {
-      await time.increaseTo(endT + 2);
+      await evmMine(endT + 2);
       await vesting.transfer(bob, { from: member1 });
-      await time.increaseTo(endT + 5);
+      await evmMine(endT + 5);
       await time.advanceBlock();
       expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
 
@@ -662,7 +663,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should correctly transfer with non-delegated votes and some claimed tokens', async function () {
-      await time.increaseTo(startT + 2);
+      await evmMine(startT + 2);
       let res = await vesting.claimTokens(bob, { from: member1 });
       const claimedAt = res.receipt.blockNumber;
       await time.increase(1);
@@ -709,7 +710,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await vesting.delegateVotes(member2, { from: member1 });
       await vesting.delegateVotes(member1, { from: member1 });
 
-      await time.increaseTo(startT + 2);
+      await evmMine(startT + 2);
       let res = await vesting.claimTokens(bob, { from: member1 });
       const claimedAt = res.receipt.blockNumber;
       await time.increase(1);

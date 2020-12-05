@@ -16,6 +16,7 @@
     "@ethersproject/abstract-signer": "^5.0.1",
     "@ethersproject/bignumber": "^5.0.3",
     "@nomiclabs/hardhat-truffle5": "^2.0.0",
+    "@powerpool/hardhat-ganache": "2.0.1",
     "@nomiclabs/hardhat-web3": "^2.0.0",
     "@openzeppelin/contracts": "^3.1.0",
     "@openzeppelin/test-helpers": "^0.5.6",
