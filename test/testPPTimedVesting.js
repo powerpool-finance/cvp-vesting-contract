@@ -607,12 +607,6 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should deny delegating to a non-member address', async function () {
-      await expect(vesting.delegateVotes(member4, { from: member1 })).to.be.revertedWith(
-        'Vesting::delegateVotes: _to user not active',
-      );
-    });
-
-    it('should deny delegating to a non-member address', async function () {
       await vesting.transfer(member4, { from: member1 });
       await expect(vesting.delegateVotes(member4, { from: member1 })).to.be.revertedWith(
         'Vesting::delegateVotes: msg.sender not active',

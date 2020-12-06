@@ -498,7 +498,6 @@ contract PPTimedVesting is CvpInterface {
     Member memory member = members[msg.sender];
     require(_to != address(0), "Vesting::delegateVotes: Can't delegate to 0 address");
     require(member.active == true, "Vesting::delegateVotes: msg.sender not active");
-    require(members[_to].active == true, "Vesting::delegateVotes: _to user not active");
 
     address currentDelegate = getVoteUser(msg.sender);
     require(_to != currentDelegate, "Vesting::delegateVotes: Already delegated to this address");
