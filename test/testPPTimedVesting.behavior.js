@@ -16,7 +16,7 @@ function ether(value) {
 ERC20.numberFormat = 'String';
 PPTimedVesting.numberFormat = 'String';
 
-// NOTICE: all durations are represented in blocks
+// NOTICE: all durations are represented in seconds
 contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member3, alice, vault]) {
   let vesting;
   let startT;
@@ -53,35 +53,51 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
   });
 
   describe('claimTokens', () => {
-    it('should allow a gradual token/votes claims each block', async function () {
+    it('should allow a gradual token/votes claims second', async function () {
       // Step #0
       expect(await erc20.balanceOf(member1)).to.be.equal('0');
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
 
       // Step #1
-      await evmMine(startV);
+      await evmMine(startV)
       expect(await vesting.hasVoteVestingStarted()).to.be.true;
 
-      await vesting.claimVotes(member1);
+      let res = await vesting.claimVotes(member1);
+      const block1 = res.receipt.blockNumber;
 
       // Step #2
-      await vesting.claimVotes(member1);
+      // await evmMine(startV + 1);
+      res = await vesting.claimVotes(member1);
+      const block2 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(ether(250));
 
       // Step #3
-      await vesting.claimVotes(member1);
+      // await evmMine(startV + 2);
+      res = await vesting.claimVotes(member1);
+      const block3 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(ether(500));
 
       // Step #4
-      await vesting.claimVotes(member1);
+      // await evmMine(startV + 3);
+      res = await vesting.claimVotes(member1);
+      const blockFour = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(ether(750));
 
       // Step #5
-      await vesting.claimVotes(member1);
+      // await evmMine(startV + 4);
+      res = await vesting.claimVotes(member1);
+      const block5 = res.receipt.blockNumber;
       expect(await erc20.balanceOf(alice)).to.be.equal('0');
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.numCheckpoints(member1)).to.be.equal('5');
+      expect(await vesting.getPriorVotes(member1, blockFour)).to.be.equal(ether(1000));
 
       // Step #6
-      await vesting.claimTokens(alice, { from: member1 });
+      // await evmMine(startV + 5);
+      res = await vesting.claimTokens(alice, { from: member1 });
+      const block6 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block5)).to.be.equal(ether(1250));
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(500));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.numCheckpoints(member1)).to.be.equal('6');
@@ -89,30 +105,40 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(checkpoint.votes).to.be.equal(ether(250));
 
       // Step #7
-      await vesting.claimTokens(alice, { from: member1 });
+      res = await vesting.claimTokens(alice, { from: member1 });
+      const block7 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block6)).to.be.equal(ether(1000));
 
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(1000));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
 
       // Step #8
-      await vesting.claimTokens(alice, { from: member1 });
+      res = await vesting.claimTokens(alice, { from: member1 });
+      const block8 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block7)).to.be.equal(ether(750));
 
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(1500));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
 
       // Step #9
-      await vesting.claimTokens(alice, { from: member1 });
+      res = await vesting.claimTokens(alice, { from: member1 });
+      const block9 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block8)).to.be.equal(ether(500));
 
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(2000));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
 
       // Step #10
-      await vesting.claimTokens(alice, { from: member1 });
+      res = await vesting.claimTokens(alice, { from: member1 });
+      const block10 = res.receipt.blockNumber;
+      expect(await vesting.getPriorVotes(member1, block9)).to.be.equal(ether(250));
 
       expect(await erc20.balanceOf(alice)).to.be.equal(ether(2500));
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
 
       // Step #11
+      await time.advanceBlock();
+      expect(await vesting.getPriorVotes(member1, block10)).to.be.equal(ether(0));
       await expect(vesting.claimTokens(alice, { from: member1 })).to.revertedWith(
         'Vesting::claimTokens: Nothing to claim',
       );

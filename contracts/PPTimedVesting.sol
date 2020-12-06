@@ -79,22 +79,22 @@ contract PPTimedVesting is CvpInterface {
   /// @notice ERC20 token address
   address public immutable token;
 
-  /// @notice Start block number for vote vesting calculations
+  /// @notice Start timestamp for vote vesting calculations
   uint256 public immutable startV;
 
-  /// @notice Duration of the vote vesting in blocks
+  /// @notice Duration of the vote vesting in seconds
   uint256 public immutable durationV;
 
-  /// @notice End vote vesting block number
+  /// @notice End vote vesting timestamp
   uint256 public immutable endV;
 
-  /// @notice Start block number for token vesting calculations
+  /// @notice Start timestamp for token vesting calculations
   uint256 public immutable startT;
 
-  /// @notice Duration of the token vesting in blocks
+  /// @notice Duration of the token vesting in seconds
   uint256 public immutable durationT;
 
-  /// @notice End token block number, used only from UI
+  /// @notice End token timestamp, used only from UI
   uint256 public immutable endT;
 
   /// @notice Number of the vesting contract members, used only from UI
@@ -119,10 +119,10 @@ contract PPTimedVesting is CvpInterface {
    * @notice Constructs a new vesting contract
    * @dev It's up to a deployer to allocate the correct amount of ERC20 tokens on this contract
    * @param _tokenAddress The ERC20 token address to use with this vesting contract
-   * @param _startV The block number when the vote vesting period starts
-   * @param _durationV The number of blocks the vote vesting period should last
-   * @param _startT The block number when the token vesting period starts
-   * @param _durationT The number of blocks the token vesting period should last
+   * @param _startV The timestamp when the vote vesting period starts
+   * @param _durationV The duration in second the vote vesting period should last
+   * @param _startT The timestamp when the token vesting period starts
+   * @param _durationT The duration in seconds the token vesting period should last
    * @param _memberList The list of addresses to distribute tokens to
    * @param _amountPerMember The number of tokens to distribute to each vesting contract member
    */
@@ -225,8 +225,6 @@ contract PPTimedVesting is CvpInterface {
    * @notice Provides information about a member already claimed votes
    * @dev Behaves like a CVP delegated balance, but with a member unclaimed balance
    * @dev Block number must be a finalized block or else this function will revert to prevent misinformation
-   * @dev Block number must be greater than the vote start block number or else this function
-   *      will revert to prevent misinformation
    * @dev Returns 0 for non-member addresses, even for previously valid ones
    * @dev This method is a copy from CVP token with several modifications
    * @param account The address of the member to check
@@ -243,8 +241,8 @@ contract PPTimedVesting is CvpInterface {
       return 0;
     }
 
-    // (Vote vesting at this blockNumber has ended)
-    if (blockNumber > endT) {
+    // (No one can use vesting votes left on the contract after endT, even for votings created before endT)
+    if (block.timestamp > endT) {
       return 0;
     }
 
@@ -278,8 +276,8 @@ contract PPTimedVesting is CvpInterface {
   /*** Available to Claim calculation ***/
 
   /**
-   * @notice Returns available amount for a claim in the next mined block
-   *         by a given member based on the current contract values
+   * @notice Returns available amount for a claim in the given timestamp
+   *         by the given member based on the current contract values
    * @param _member The member address to return available balance for
    * @return The available amount for a claim in the next block
    */
@@ -293,7 +291,7 @@ contract PPTimedVesting is CvpInterface {
   }
 
   /**
-   * @notice Returns available token amount for a claim by a given member in the current block
+   * @notice Returns available token amount for a claim by a given member in the current timestamp
    *         based on the current contract values
    * @param _member The member address to return available balance for
    * @return The available amount for a claim in the current block
@@ -308,10 +306,10 @@ contract PPTimedVesting is CvpInterface {
   }
 
   /**
-   * @notice Returns available vote amount for a claim by a given member in the current block
+   * @notice Returns available vote amount for a claim by a given member at the moment
    *         based on the current contract values
    * @param _member The member address to return available balance for
-   * @return The available amount for a claim in the current block
+   * @return The available amount for a claim at the moment
    */
   function getAvailableVotesForMember(address _member) external view returns (uint256) {
     Member storage member = members[_member];
@@ -350,30 +348,31 @@ contract PPTimedVesting is CvpInterface {
   /**
    * @notice Calculates available amount for a claim
    * @dev A pure function which doesn't reads anything from state
-   * @param _now A block number to calculate the available amount
-   * @param _startBlock The vesting period start block number
+   * @param _now A timestamp to calculate the available amount
+   * @param _start The vesting period start timestamp
    * @param _amountPerMember The amount of ERC20 tokens to be distributed to each member
    *         during this vesting period
+   * @param _duration The vesting total duration in seconds
    * @param _alreadyClaimed The amount of tokens already claimed by a member
    * @return The available amount for a claim
    */
   function getAvailable(
     uint256 _now,
-    uint256 _startBlock,
+    uint256 _start,
     uint256 _amountPerMember,
-    uint256 _durationInBlocks,
+    uint256 _duration,
     uint256 _alreadyClaimed
   ) public pure returns (uint256) {
-    if (_now <= _startBlock) {
+    if (_now <= _start) {
       return 0;
     }
 
-    // uint256 vestingEndsAt = _startBlock + _durationInBlocks;
-    uint256 vestingEndsAt = _startBlock.add(_durationInBlocks);
-    uint256 toBlock = _now > vestingEndsAt ? vestingEndsAt : _now;
+    // uint256 vestingEndsAt = _start + _duration;
+    uint256 vestingEndsAt = _start.add(_duration);
+    uint256 to = _now > vestingEndsAt ? vestingEndsAt : _now;
 
-    // uint256 accrued = (toBlock - _startBlock) * _amountPerMember / _durationInBlocks;
-    uint256 accrued = ((toBlock - _startBlock).mul(_amountPerMember).div(_durationInBlocks));
+    // uint256 accrued = (to - _start) * _amountPerMember / _duration;
+    uint256 accrued = ((to - _start).mul(_amountPerMember).div(_duration));
 
     // return accrued - _alreadyClaimed;
     return accrued.sub(_alreadyClaimed);
@@ -516,7 +515,7 @@ contract PPTimedVesting is CvpInterface {
 
   /**
    * @notice Transfers a vested rights for a member funds to another address
-   * @dev A new member won't have any votes for a period between a start block and a current block
+   * @dev A new member won't have any votes for a period between a start timestamp and a current timestamp
    * @param _to address to transfer a vested right to
    */
   function transfer(address _to) external {
