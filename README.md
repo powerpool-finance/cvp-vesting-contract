@@ -8,7 +8,9 @@ More details in 👉 [Specification](https://github.com/powerpool-finance/powerp
 
 ✅ **Security review status: Audited**
 
-More details in 👉 [Report](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vesting-security.pdf).
+More details in 👉: 
+- [`PPVesting.sol` Security Audit Report by Pessimistic](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vesting-security.pdf);
+- [`PPVesting.sol` Security Audit Report V2 by Pessimistic](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vestingV2-security.pdf);
 
 ## Contracts on Ethereum Main Network
 
