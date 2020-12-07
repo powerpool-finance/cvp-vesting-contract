@@ -3,7 +3,7 @@
 pragma solidity 0.6.12;
 
 import "./utils/SafeMath.sol";
-import "hardhat/console.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IERC20 {
   function totalSupply() external view returns (uint256);
@@ -19,11 +19,14 @@ interface CvpInterface {
  * @title PowerPool Vesting Contract
  * @author PowerPool
  */
-contract PPTimedVesting is CvpInterface {
+contract PPTimedVesting is CvpInterface, Ownable {
   using SafeMath for uint256;
 
   // @notice Emitted once when the contract was deployed
   event Init(address[] members);
+
+  // @notice Emitted when the owner increases durationT correspondingly increasing the endT timestamp
+  event IncreaseDurationT(uint256 prevDurationT, uint256 prevEndT, uint256 newDurationT, uint256 newEndT);
 
   // @notice Emitted when a member delegates his votes to one of the delegates or to himself
   event DelegateVotes(address indexed from, address indexed to, address indexed previousDelegate, uint96 adjustedVotes);
@@ -91,17 +94,17 @@ contract PPTimedVesting is CvpInterface {
   /// @notice Start timestamp for token vesting calculations
   uint256 public immutable startT;
 
-  /// @notice Duration of the token vesting in seconds
-  uint256 public immutable durationT;
-
-  /// @notice End token timestamp, used only from UI
-  uint256 public immutable endT;
-
   /// @notice Number of the vesting contract members, used only from UI
   uint256 public immutable memberCount;
 
   /// @notice Amount of ERC20 tokens to distribute during the vesting period
   uint96 public immutable amountPerMember;
+
+  /// @notice Duration of the token vesting in seconds
+  uint256 public durationT;
+
+  /// @notice End token timestamp, used only from UI
+  uint256 public endT;
 
   /// @notice Member details by their address
   mapping(address => Member) public members;
@@ -378,6 +381,21 @@ contract PPTimedVesting is CvpInterface {
     return accrued.sub(_alreadyClaimed);
   }
 
+  /*** Owner Methods ***/
+
+  function increaseDurationT(uint256 _newDurationT) external onlyOwner {
+    require(_newDurationT > durationT, "Vesting::increaseDurationT: Too small duration");
+
+    uint256 prevDurationT = durationT;
+    uint256 prevEndT = endT;
+
+    durationT = _newDurationT;
+    uint256 newEndT = startT.add(_newDurationT);
+    endT = newEndT;
+
+    emit IncreaseDurationT(prevDurationT, prevEndT, _newDurationT, newEndT);
+  }
+
   /*** Member Methods ***/
 
   /**
@@ -498,7 +516,6 @@ contract PPTimedVesting is CvpInterface {
     Member memory member = members[msg.sender];
     require(_to != address(0), "Vesting::delegateVotes: Can't delegate to 0 address");
     require(member.active == true, "Vesting::delegateVotes: msg.sender not active");
-    require(members[_to].active == true, "Vesting::delegateVotes: _to user not active");
 
     address currentDelegate = getVoteUser(msg.sender);
     require(_to != currentDelegate, "Vesting::delegateVotes: Already delegated to this address");
