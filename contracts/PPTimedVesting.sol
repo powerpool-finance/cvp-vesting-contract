@@ -386,7 +386,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
   function increaseDurationT(uint256 _newDurationT) external onlyOwner {
     require(
       _newDurationT > durationT,
-      "Vesting::increaseDurationT: New duration should be grater than the previous one"
+      "Vesting::increaseDurationT: Too small duration"
     );
 
     uint256 prevDurationT = durationT;
