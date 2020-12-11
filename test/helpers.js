@@ -1,4 +1,5 @@
 const { ether: etherBN, time } = require('@openzeppelin/test-helpers');
+const assert = require('assert');
 
 const getCounter = (n => () => n++)(1);
 
@@ -8,6 +9,10 @@ module.exports = {
   evmSetNextBlockTimestamp: buildEndpoint('evm_setNextBlockTimestamp'),
   logBlock,
   logLatestBlock,
+  increaseTimeTo,
+  getBlockTimestampByRes,
+  getLatestBlockTimestamp,
+  getLatestBlockNumber,
   ether
 };
 
@@ -36,6 +41,31 @@ function buildEndpoint(endpoint) {
       );
     });
   }
+}
+
+async function increaseTimeTo(value) {
+  assert(typeof value === 'number');
+  const evmIncreaseTime = buildEndpoint('evm_increaseTime');
+  const latestTimestamp = parseInt((await web3.eth.getBlock('latest')).timestamp, 10);
+  return evmIncreaseTime(value - latestTimestamp);
+}
+
+/**
+ * Returns the latest block timestamp
+ * @returns {Promise<number>}
+ */
+async function getLatestBlockTimestamp() {
+  let block = (await time.latestBlock()).toNumber();
+  return parseInt((await web3.eth.getBlock(block)).timestamp, 10);
+}
+
+async function getLatestBlockNumber() {
+  const block = await web3.eth.getBlock('latest');
+  return parseInt(block.number, 10);
+}
+
+async function getBlockTimestampByRes(res) {
+  return (await web3.eth.getBlock(res.receipt.blockNumber)).timestamp;
 }
 
 async function logBlock(block) {
