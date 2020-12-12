@@ -23,7 +23,7 @@ const config = {
   },
   contractSizer: {
     alphaSort: false,
-    runOnCompile: false,
+    runOnCompile: true,
   },
   defaultNetwork: 'hardhat',
   gasReporter: {
@@ -66,8 +66,8 @@ const config = {
   solidity: {
     settings: {
       optimizer: {
-        enabled: false,
-        runs: 1,
+        enabled: !!process.env.ETHERSCAN_KEY || process.env.COMPILE_TARGET === 'release',
+        runs: 200,
       },
     },
     version: '0.6.12',
