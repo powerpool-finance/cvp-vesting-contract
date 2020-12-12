@@ -128,13 +128,16 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should allow the owner increasing durationT', async function() {
       const newDuration = time.duration.days(179);
+      const newEndT = (new BN(prevStartT)).add(newDuration).toString();
       const res = await vesting.increaseDurationT(newDuration.toString(), { from: owner });
       expectEvent(res, 'IncreaseDurationT', {
         prevDurationT: '20',
         prevEndT: prevEndT,
         newDurationT: time.duration.days(179).toString(),
-        newEndT: (new BN(prevStartT)).add(newDuration).toString(),
+        newEndT: newEndT,
       });
+      expect(await vesting.durationT()).to.be.equal(newDuration.toString());
+      expect(await vesting.endT()).to.be.equal(newEndT);
     });
 
     it('should deny increasing duration by less than the current', async function() {
