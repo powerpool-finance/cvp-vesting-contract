@@ -385,6 +385,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
   function increaseDurationT(uint256 _newDurationT) external onlyOwner {
     require(_newDurationT > durationT, "Vesting::increaseDurationT: Too small duration");
+    require((_newDurationT - durationT) < 180 days, "Vesting::increaseDurationT: Too big duration");
 
     uint256 prevDurationT = durationT;
     uint256 prevEndT = endT;
@@ -573,10 +574,11 @@ contract PPTimedVesting is CvpInterface, Ownable {
     delete voteDelegations[msg.sender];
 
     Member memory toMember = members[_to];
-    uint256 votes = getAvailableVotes(toMember.alreadyClaimedVotes);
-    _claimVotes(_to, toMember, votes);
 
     emit Transfer(msg.sender, _to, alreadyClaimedVotes, alreadyClaimedTokens, currentDelegate);
+
+    uint256 votes = getAvailableVotes(toMember.alreadyClaimedVotes);
+    _claimVotes(_to, toMember, votes);
   }
 
   function _subDelegatedVotesCache(address _member, uint96 _subAmount) internal {

@@ -1,4 +1,4 @@
-const { ether: etherBN, time, constants } = require('@openzeppelin/test-helpers');
+const { ether: etherBN, time, constants, expectEvent } = require('@openzeppelin/test-helpers');
 const { solidity } = require('ethereum-waffle');
 const { evmMine } = require('./helpers');
 
@@ -8,6 +8,7 @@ const ERC20 = artifacts.require('ERC20PresetMinterPauser');
 
 chai.use(solidity);
 const { expect } = chai;
+const { BN } = web3.utils;
 
 function ether(value) {
   return etherBN(String(value)).toString();
@@ -16,7 +17,7 @@ function ether(value) {
 ERC20.numberFormat = 'String';
 PPTimedVesting.numberFormat = 'String';
 
-contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, member4, bob, vault]) {
+contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, member4, owner, bob, vault]) {
   let vesting;
   let startV;
   let durationV;
@@ -114,6 +115,45 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
         PPTimedVesting.new(bob, startV, durationV, startT, durationT, [member1, member2, member3], amountPerMember),
       ).to.be.revertedWith('Transaction reverted: function call to a non-contract account');
     });
+  });
+
+  describe('increaseDurationT()', async function() {
+    let prevStartT;
+    let prevEndT;
+    beforeEach(async function () {
+      await vesting.transferOwnership(owner);
+      prevStartT = await vesting.startT();
+      prevEndT = await vesting.endT();
+    })
+
+    it('should allow the owner increasing durationT', async function() {
+      const newDuration = time.duration.days(179);
+      const res = await vesting.increaseDurationT(newDuration.toString(), { from: owner });
+      expectEvent(res, 'IncreaseDurationT', {
+        prevDurationT: '20',
+        prevEndT: prevEndT,
+        newDurationT: time.duration.days(179).toString(),
+        newEndT: (new BN(prevStartT)).add(newDuration).toString(),
+      });
+    });
+
+    it('should deny increasing duration by less than the current', async function() {
+      await expect(vesting.increaseDurationT(19, { from: owner })).to.be.revertedWith(
+        'Vesting::increaseDurationT: Too small duration',
+      );
+    })
+
+    it('should deny increasing duration by more than 180 days', async function() {
+      await expect(vesting.increaseDurationT(time.duration.days(181), { from: owner })).to.be.revertedWith(
+        'Vesting::increaseDurationT: Too big duration',
+      );
+    })
+
+    it('should deny non-owner calling the method', async function() {
+      await expect(vesting.increaseDurationT(21, { from: bob })).to.be.revertedWith(
+        'Ownable: caller is not the owner',
+      );
+    })
   });
 
   describe('get available pure function', () => {
