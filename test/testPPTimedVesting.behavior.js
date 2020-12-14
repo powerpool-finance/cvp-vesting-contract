@@ -29,15 +29,14 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
   describe('claimTokens', () => {
     it('should allow a gradual token/votes claims each second', async function () {
       // Setup...
-
       const amountPerMember = ether('2500');
       const currentTimestamp = (await time.latest()).toNumber();
 
-      startV = parseInt(currentTimestamp) + 5;
-      durationV = 10;
+      const startV = parseInt(currentTimestamp) + 5;
+      const durationV = 10;
 
-      startT = parseInt(currentTimestamp) + 10;
-      durationT = 5;
+      const startT = parseInt(currentTimestamp) + 10;
+      const durationT = 5;
 
       vesting = await PPTimedVesting.new(
         erc20.address,
@@ -178,45 +177,47 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
   const VMS = buildMS(DURATION_V)
   const TMS = buildMS(DURATION_T)
 
-  it('should allow launching vesting after startV', async function () {
-    // Setup...
-    const currentTimestamp = (await time.latest()).toNumber();
-    startV = parseInt(currentTimestamp) - months(2);
-    startT = parseInt(currentTimestamp) + months(4);
+  describe('launching', () => {
+    it('should allow launching vesting after startV', async function () {
+      // Setup...
+      const currentTimestamp = (await time.latest()).toNumber();
+      startV = parseInt(currentTimestamp) - months(2);
+      startT = parseInt(currentTimestamp) + months(4);
 
-    vesting = await PPTimedVesting.new(
-      erc20.address,
-      startV,
-      durationV,
-      startT,
-      durationT,
-      [member1, member2, member3],
-      amountPerMember,
-    );
+      vesting = await PPTimedVesting.new(
+        erc20.address,
+        startV,
+        durationV,
+        startT,
+        durationT,
+        [member1, member2, member3],
+        amountPerMember,
+      );
 
-    await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
+      await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
 
-    // Step #1. Member #1 claimV #1
+      // Step #1. Member #1 claimV #1
 
-    await vesting.claimVotes(member1);
+      await vesting.claimVotes(member1);
 
-    // Step #2. Member #1 claimV #2
-    await evmSetNextBlockTimestamp(startV + months(3));
-    await vesting.claimVotes(member1);
-    expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(VMS(3));
+      // Step #2. Member #1 claimV #2
+      await evmSetNextBlockTimestamp(startV + months(3));
+      await vesting.claimVotes(member1);
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(VMS(3));
 
-    // Step #3. Member #1 claimT #1 claimV #3
-    await evmSetNextBlockTimestamp(startV + months(22));
-    await vesting.claimTokens(member1, { from: member1 });
-    expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
-    expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(TMS(16));
+      // Step #3. Member #1 claimT #1 claimV #3
+      await evmSetNextBlockTimestamp(startV + months(22));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
+      expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(TMS(16));
 
-    // Step #4. Member #1 claimT #2 claimV #4
-    await evmSetNextBlockTimestamp(startV + months(24));
-    await vesting.claimTokens(member1, { from: member1 });
-    expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
-    expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(amountPerMember);
-  });
+      // Step #4. Member #1 claimT #2 claimV #4
+      await evmSetNextBlockTimestamp(startV + months(24));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
+      expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(amountPerMember);
+    });
+  })
 
   describe('increaseDurationT', () => {
     it('should allow claiming after increaseDurationT', async function () {
