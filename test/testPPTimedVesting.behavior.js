@@ -1,4 +1,4 @@
-const { time, expectEvent } = require('@openzeppelin/test-helpers');
+const { time } = require('@openzeppelin/test-helpers');
 const { solidity } = require('ethereum-waffle');
 const { evmMine, getLatestBlockTimestamp, getLatestBlockNumber, evmSetNextBlockTimestamp, ether } = require('./helpers');
 
@@ -177,6 +177,46 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
   const TMB = buildMB(DURATION_T);
   const VMS = buildMS(DURATION_V)
   const TMS = buildMS(DURATION_T)
+
+  it('should allow launching vesting after startV', async function () {
+    // Setup...
+    const currentTimestamp = (await time.latest()).toNumber();
+    startV = parseInt(currentTimestamp) - months(2);
+    startT = parseInt(currentTimestamp) + months(4);
+
+    vesting = await PPTimedVesting.new(
+      erc20.address,
+      startV,
+      durationV,
+      startT,
+      durationT,
+      [member1, member2, member3],
+      amountPerMember,
+    );
+
+    await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
+
+    // Step #1. Member #1 claimV #1
+
+    await vesting.claimVotes(member1);
+
+    // Step #2. Member #1 claimV #2
+    await evmSetNextBlockTimestamp(startV + months(3));
+    await vesting.claimVotes(member1);
+    expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(VMS(3));
+
+    // Step #3. Member #1 claimT #1 claimV #3
+    await evmSetNextBlockTimestamp(startV + months(22));
+    await vesting.claimTokens(member1, { from: member1 });
+    expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
+    expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(TMS(16));
+
+    // Step #4. Member #1 claimT #2 claimV #4
+    await evmSetNextBlockTimestamp(startV + months(24));
+    await vesting.claimTokens(member1, { from: member1 });
+    expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
+    expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(amountPerMember);
+  });
 
   describe('increaseDurationT', () => {
     it('should allow claiming after increaseDurationT', async function () {
