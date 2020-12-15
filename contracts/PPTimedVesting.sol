@@ -141,7 +141,8 @@ contract PPTimedVesting is CvpInterface, Ownable {
     require(_durationV > 1, "Vesting: Invalid durationV");
     require(_durationT > 1, "Vesting: Invalid durationT");
     require(_startV < _startT, "Vesting: Requires startV < startT");
-    require((_startV + _durationV) <= (_startT + _durationT), "Vesting: Requires endV <= endT");
+    // require((_startV + _durationV) <= (_startT + _durationT), "Vesting: Requires endV <= endT");
+    require((_startV.add(_durationV)) <= (_startT.add(_durationT)), "Vesting: Requires endV <= endT");
     require(_amountPerMember > 0, "Vesting: Invalid amount per member");
     require(IERC20(_tokenAddress).totalSupply() > 0, "Vesting: Missing supply of the token");
 
