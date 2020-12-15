@@ -24,20 +24,19 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
   beforeEach(async function () {
     erc20 = await ERC20.new('Concentrated Voting Power', 'CVP');
     await erc20.mint(vault, ether(150000000000));
-
-    // Setup...
   });
 
   describe('claimTokens', () => {
     it('should allow a gradual token/votes claims each second', async function () {
+      // Setup...
       const amountPerMember = ether('2500');
       const currentTimestamp = (await time.latest()).toNumber();
 
-      startV = parseInt(currentTimestamp) + 5;
-      durationV = 10;
+      const startV = parseInt(currentTimestamp) + 5;
+      const durationV = 10;
 
-      startT = parseInt(currentTimestamp) + 10;
-      durationT = 5;
+      const startT = parseInt(currentTimestamp) + 10;
+      const durationT = 5;
 
       vesting = await PPTimedVesting.new(
         erc20.address,
@@ -136,30 +135,227 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
     });
   });
 
+  // Time offsets
+  // deployment   -30    -0.1y
+  // startV       0      0y
+  // startT       182.5  0.5 y
+  // endV         365    1y
+  // envT         730    2y
+
+  const amountPerMember = ether(5 * 1000 * 1000);
+  durationV = 3600 * 24 * 365;
+  durationT = 3600 * 24 * 547.5;
+
+  function days(number) {
+    return 3600 * 24 * number;
+  }
+
+  function months(number) {
+    return 3600 * 24 * number * 365 / 12;
+  }
+
+  const DAYS_IN_YEAR = BigInt(365e9);
+  const DAY_SECONDS = BigInt(3600 * 24);
+  const PER_MEMBER = BigInt(amountPerMember);
+  const DURATION_V = BigInt(durationV.toString());
+  const DURATION_T = BigInt(durationT.toString());
+
+  function buildMB(duration) {
+    return function (months) {
+      return PER_MEMBER * DAYS_IN_YEAR * BigInt(months) * DAY_SECONDS / BigInt(duration) / BigInt(12e9);
+    }
+  }
+  function buildMS(duration) {
+    const vmb = buildMB(duration);
+    return function(months) {
+      return vmb(months).toString();
+    }
+  }
+
+  const VMB = buildMB(DURATION_V);
+  const TMB = buildMB(DURATION_T);
+  const VMS = buildMS(DURATION_V)
+  const TMS = buildMS(DURATION_T)
+
+  describe('launching', () => {
+    it('should allow launching vesting after startV', async function () {
+      // Setup...
+      const currentTimestamp = (await time.latest()).toNumber();
+      startV = parseInt(currentTimestamp) - months(2);
+      startT = parseInt(currentTimestamp) + months(4);
+
+      vesting = await PPTimedVesting.new(
+        erc20.address,
+        startV,
+        durationV,
+        startT,
+        durationT,
+        [member1, member2, member3],
+        amountPerMember,
+      );
+
+      await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
+
+      // Step #1. Member #1 claimV #1
+
+      await vesting.claimVotes(member1);
+
+      // Step #2. Member #1 claimV #2
+      await evmSetNextBlockTimestamp(startV + months(3));
+      await vesting.claimVotes(member1);
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(VMS(3));
+
+      // Step #3. Member #1 claimT #1 claimV #3
+      await evmSetNextBlockTimestamp(startV + months(22));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
+      expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(TMS(16));
+
+      // Step #4. Member #1 claimT #2 claimV #4
+      await evmSetNextBlockTimestamp(startV + months(24));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(amountPerMember);
+      expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(amountPerMember);
+    });
+  })
+
+  describe('increaseDurationT', () => {
+    it('should allow claiming after increaseDurationT', async function () {
+      // Setup...
+      const currentTimestamp = (await time.latest()).toNumber();
+      startV = parseInt(currentTimestamp) + months(1);
+      startT = parseInt(currentTimestamp) + months(7);
+
+      vesting = await PPTimedVesting.new(
+        erc20.address,
+        startV,
+        durationV,
+        startT,
+        durationT,
+        [member1, member2, member3],
+        amountPerMember,
+      );
+
+      await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
+
+      // Step #1. Member #1 claimT #1
+      await evmSetNextBlockTimestamp(startV + months(7));
+      expect(await erc20.balanceOf(member1)).to.be.equal('0');
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(7));
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal('0');
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS(1));
+
+      // Step #2. IncreaseDurationT
+      await expect(vesting.increaseDurationT(months(17))).to.be.revertedWith('Vesting::increaseDurationT: Too small duration');
+      await vesting.increaseDurationT(months(20));
+
+      const TMS2 = buildMS(months(20));
+
+      // Step #3. Member #1 claimV #2
+      await vesting.claimVotes(member1, { from: member1 });
+
+      await expect(vesting.claimTokens(member1, { from: member1 })).to.be.revertedWith('SafeMath: subtraction overflow');
+
+      // Step #4. Member #1 claimT #2 claimV #2
+      await evmSetNextBlockTimestamp(startV + months(8));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS2(2));
+
+      // Step #5. Member #1 claimT #3 claimV #3
+      await evmSetNextBlockTimestamp(startV + months(24));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(24));
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS2(18));
+
+      // Step #6. Member #1 claimT #4 claimV #4
+      await evmSetNextBlockTimestamp(startV + months(26));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(26));
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS2(20));
+      expect(await erc20.balanceOf(member1)).to.be.equal(amountPerMember);
+    });
+
+    it('should allow correctly handle delegations', async function () {
+      // Setup...
+      const currentTimestamp = (await time.latest()).toNumber();
+      startV = parseInt(currentTimestamp) + months(1);
+      startT = parseInt(currentTimestamp) + months(7);
+
+      vesting = await PPTimedVesting.new(
+        erc20.address,
+        startV,
+        durationV,
+        startT,
+        durationT,
+        [member1, member2, member3],
+        amountPerMember,
+      );
+
+      await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
+
+      // Step #1. Member #1 claimT #1
+      await evmSetNextBlockTimestamp(startV + months(7));
+      expect(await erc20.balanceOf(member1)).to.be.equal('0');
+      await vesting.claimTokens(member1, { from: member1 });
+      const block1 = await getLatestBlockNumber();
+      expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(7));
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal('0');
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS(1));
+
+      // Step #2. Delegate 1 -> 2
+      await vesting.delegateVotes(member2, { from: member1 });
+      const block2 = await getLatestBlockNumber();
+
+      // Step #3. IncreaseDurationT
+      await vesting.increaseDurationT(months(20));
+      const TMS2 = buildMS(months(20));
+      const TMB2 = buildMB(months(20));
+
+      // Step #4. Member #1 claimV #2
+      await evmSetNextBlockTimestamp(startV + months(8));
+      await vesting.delegateVotes(member1, { from: member1 });
+      const block3 = await getLatestBlockNumber();
+
+      // Step #4. Member #1 claimT #2 claimV #2
+      await evmSetNextBlockTimestamp(startV + months(9));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS2(3));
+      const block4 = await getLatestBlockNumber();
+
+      // Step #5. Member #1 claimT #3 claimV #3
+      await evmSetNextBlockTimestamp(startV + months(24));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(24));
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS2(18));
+
+      // Step #6. Member #1 claimT #4 claimV #4
+      await evmSetNextBlockTimestamp(startV + months(26));
+      await vesting.claimTokens(member1, { from: member1 });
+      expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(26));
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS2(20));
+      expect(await erc20.balanceOf(member1)).to.be.equal(amountPerMember);
+
+      // Vote cache checks
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal((VMB(7) - TMB(1)).toString());
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal((VMB(7) - TMB(1)).toString());
+      expect(await vesting.getPriorVotes(member1, block4)).to.be.equal((VMB(9) - TMB2(3)).toString());
+
+      expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member2, block2)).to.be.equal((VMB(7) - TMB(1)).toString());
+      expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal('0');
+    });
+  });
+
   describe('delegation', () => {
     it('should allow delegation', async function () {
-      // Time offsets
-      // deployment   -30    -0.1y
-      // startV       0      0y
-      // startT       182.5  0.5 y
-      // endV         365    1y
-      // envT         730    2y
-
       // Setup...
-      const amountPerMember = ether(5 * 1000 * 1000);
       const currentTimestamp = (await time.latest()).toNumber();
-      function days(number) {
-        return 3600 * 24 * number;
-      }
-
-      function months(number) {
-        return 3600 * 24 * number * 365 / 12;
-      }
       startV = parseInt(currentTimestamp) + months(1);
-      durationV = 3600 * 24 * 365;
 
       startT = parseInt(currentTimestamp) + months(7);
-      durationT = 3600 * 24 * 547.5;
 
       vesting = await PPTimedVesting.new(
         erc20.address,
@@ -172,34 +368,6 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       );
 
       await erc20.transfer(vesting.address, ether(3 * 5 * 1000 * 1000), { from: vault });
-
-      const DAYS_IN_YEAR = BigInt(365e9);
-      const DAY_SECONDS = BigInt(3600 * 24);
-      const PER_MEMBER = BigInt(amountPerMember);
-      const DURATION_V = BigInt(durationV.toString());
-      const DURATION_T = BigInt(durationT.toString());
-
-      function VMB(months) {
-        return PER_MEMBER * DAYS_IN_YEAR * BigInt(months) * DAY_SECONDS / DURATION_V / BigInt(12e9);
-      }
-
-      function TMB(months) {
-        return PER_MEMBER * DAYS_IN_YEAR * BigInt(months) * DAY_SECONDS / DURATION_T / BigInt(12e9);
-      }
-
-      /**
-       * Returns amount of votes to be granted to a single member during 1-month period
-       * @param {number} months amount
-       * @returns {string} calculated value
-       */
-      function VM(months) { return VMB(months).toString(); }
-
-      /**
-       * Returns amount of tokens to be granted to a single member during 1-month period
-       * @param {number} months amount
-       * @returns {string} calculated value
-       */
-      function TM(months) { return TMB(months).toString(); }
 
       // Step #1. Member #1 claimV #1
       await evmSetNextBlockTimestamp(startV + days(1));
@@ -220,24 +388,24 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member1, block1 - 2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block1 - 1)).to.be.equal('0');
       // ~821_917/30 days rate
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
 
       // Step #3. Member #1 claimV #3
       await evmSetNextBlockTimestamp(startV + months(3));
       await vesting.claimVotes(member1);
       const block3 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(3));
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
 
       // Step #4. Delegate 1 -> 2
       await evmSetNextBlockTimestamp(startV + months(4));
       await vesting.delegateVotes(member2, { from: member1 });
       const block4 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(4));
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
 
       // Step #5. Member #1 claimV #4
       await evmSetNextBlockTimestamp(startV + months(5));
@@ -245,15 +413,15 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       const block5 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(5));
 
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
       expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
 
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VMS(3));
 
       // Step #6. Member #3 claimV #1
       await evmSetNextBlockTimestamp(startV + months(6));
@@ -267,9 +435,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       const block7 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(7));
 
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
       expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block5)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block6)).to.be.equal('0');
@@ -277,16 +445,16 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VM(3));
-      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VM(5));
-      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VM(5));
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VMS(3));
+      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VMS(5));
+      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VMS(5));
 
       expect(await vesting.getPriorVotes(member3, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block3)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block5)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VM(6));
+      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VMS(6));
 
       // Step #8. Member #2 claimT #1
       await evmSetNextBlockTimestamp(startV + months(8));
@@ -294,9 +462,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       const block8 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(8));
 
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
       expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block5)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block6)).to.be.equal('0');
@@ -305,9 +473,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VM(3));
-      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VM(5));
-      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VM(5));
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VMS(3));
+      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VMS(5));
+      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VMS(5));
       expect(await vesting.getPriorVotes(member2, block7)).to.be.equal((VMB(5) + VMB(6)).toString());
 
       expect(await vesting.getPriorVotes(member3, block1)).to.be.equal('0');
@@ -315,7 +483,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member3, block3)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block5)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VM(6));
+      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VMS(6));
       expect(await vesting.getPriorVotes(member3, block7)).to.be.equal('0');
 
       // Step #9. Member #1 claimT #5
@@ -324,9 +492,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       const block9 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(9));
 
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
       expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block5)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block6)).to.be.equal('0');
@@ -336,9 +504,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VM(3));
-      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VM(5));
-      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VM(5));
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VMS(3));
+      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VMS(5));
+      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VMS(5));
       expect(await vesting.getPriorVotes(member2, block7)).to.be.equal((VMB(5) + VMB(6)).toString());
       expect(await vesting.getPriorVotes(member2, block8)).to.be.equal((VMB(5) + VMB(8) + VMB(6) - TMB(2)).toString());
 
@@ -347,7 +515,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member3, block3)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block5)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VM(6));
+      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VMS(6));
       expect(await vesting.getPriorVotes(member3, block7)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block8)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block8)).to.be.equal('0');
@@ -357,9 +525,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       await vesting.delegateVotes(member1, { from: member2 });
       const block10 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(11));
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
       expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block5)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block6)).to.be.equal('0');
@@ -370,9 +538,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VM(3));
-      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VM(5));
-      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VM(5));
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VMS(3));
+      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VMS(5));
+      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VMS(5));
       expect(await vesting.getPriorVotes(member2, block7)).to.be.equal((VMB(5) + VMB(6)).toString());
       expect(await vesting.getPriorVotes(member2, block8)).to.be.equal((VMB(5) + VMB(8) + VMB(6) - TMB(2)).toString());
       expect(await vesting.getPriorVotes(member2, block9)).to.be.equal((VMB(9) + VMB(8) + VMB(6) - TMB(2) - TMB(3)).toString());
@@ -382,15 +550,15 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member3, block3)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block5)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VM(6));
+      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VMS(6));
       expect(await vesting.getPriorVotes(member3, block7)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block8)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block8)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block9)).to.be.equal('0');
 
-      expect(await erc20.balanceOf(member1)).to.be.equal(TM(3));
-      expect(await erc20.balanceOf(member2)).to.be.equal(TM(2));
-      expect(await erc20.balanceOf(member3)).to.be.equal(TM(0));
+      expect(await erc20.balanceOf(member1)).to.be.equal(TMS(3));
+      expect(await erc20.balanceOf(member2)).to.be.equal(TMS(2));
+      expect(await erc20.balanceOf(member3)).to.be.equal(TMS(0));
 
       expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
       expect(await vesting.voteDelegations(member2)).to.be.equal(member1);
@@ -418,9 +586,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
 
       // >>> endT checks
 
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VM(1));
-      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VM(2));
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VM(3));
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal(VMS(1));
+      expect(await vesting.getPriorVotes(member1, block2)).to.be.equal(VMS(2));
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal(VMS(3));
       expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block5)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block6)).to.be.equal('0');
@@ -434,9 +602,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block3)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VM(3));
-      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VM(5));
-      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VM(5));
+      expect(await vesting.getPriorVotes(member2, block4)).to.be.equal(VMS(3));
+      expect(await vesting.getPriorVotes(member2, block5)).to.be.equal(VMS(5));
+      expect(await vesting.getPriorVotes(member2, block6)).to.be.equal(VMS(5));
       expect(await vesting.getPriorVotes(member2, block7)).to.be.equal((VMB(5) + VMB(6)).toString());
       expect(await vesting.getPriorVotes(member2, block8)).to.be.equal((VMB(5) + VMB(8) + VMB(6) - TMB(2)).toString());
       expect(await vesting.getPriorVotes(member2, block9)).to.be.equal((VMB(9) + VMB(8) + VMB(6) - TMB(2) - TMB(3)).toString());
@@ -449,7 +617,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await vesting.getPriorVotes(member3, block3)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block4)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block5)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VM(6));
+      expect(await vesting.getPriorVotes(member3, block6)).to.be.equal(VMS(6));
       expect(await vesting.getPriorVotes(member3, block7)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block8)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member3, block8)).to.be.equal('0');
@@ -473,7 +641,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
 
       expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(FIVE_MILLIONS);
       expect((await vesting.members(member2)).alreadyClaimedVotes).to.be.equal(FIVE_MILLIONS);
-      expect((await vesting.members(member3)).alreadyClaimedVotes).to.be.equal(VM(6));
+      expect((await vesting.members(member3)).alreadyClaimedVotes).to.be.equal(VMS(6));
       expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(FIVE_MILLIONS);
       expect((await vesting.members(member2)).alreadyClaimedTokens).to.be.equal(FIVE_MILLIONS);
       expect((await vesting.members(member3)).alreadyClaimedTokens).to.be.equal(FIVE_MILLIONS);
