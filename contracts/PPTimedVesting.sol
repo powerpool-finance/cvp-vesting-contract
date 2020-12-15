@@ -215,11 +215,12 @@ contract PPTimedVesting is CvpInterface, Ownable {
   }
 
   /**
-   * @notice Provides debugging information about the last cached votes checkpoint with no other conditions
-   * @dev This method remains only for debugging purposes. For actual vote information use `getPriorVotes()`
+   * @notice Provides information about the last cached votes checkpoint with no other conditions
+   * @dev Provides a latest cached votes value. For actual votes information use `getPriorVotes()` which introduce
+   *      some additional logic constraints on top of this cached value.
    * @param _member The member address to get votes for
    */
-  function debugLastCachedVotes(address _member) public view returns (uint256) {
+  function getLastCachedVotes(address _member) external view returns (uint256) {
     uint32 dstRepNum = numCheckpoints[_member];
     return dstRepNum > 0 ? checkpoints[_member][dstRepNum - 1].votes : 0;
   }
