@@ -4,7 +4,9 @@
 
 Smart contract provides a temporary lock and following it vesting for the CVP ERC20 tokens received by participants in the Beta and Gamma testing rounds of PowerPool. The contract has a special function, which allows one to vote using tokens locked in the contract.
 
-More details in 👉 [Specification](https://github.com/powerpool-finance/powerpool-docs/blob/master/specifications/ppVesting.md).
+More details in 👉 
+- [`PPVesting.sol`Specification](https://github.com/powerpool-finance/powerpool-docs/blob/master/specifications/ppVesting.md)
+- [`PPTimedVesting.sol`Specification](https://github.com/powerpool-finance/powerpool-docs/blob/master/specifications/PPTimedVesting.md)
 
 ✅ **Security review status: Audited**
 
