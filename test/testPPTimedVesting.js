@@ -478,7 +478,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
         await time.increase(1);
         expect(await vesting.hasVoteVestingEnded()).to.be.true;
         // 5000 - 1250
-        expect(await vesting.debugLastCachedVotes(member1)).to.be.equal(ether(3750));
+        expect(await vesting.getLastCachedVotes(member1)).to.be.equal(ether(3750));
         expect(await vesting.getPriorVotes(member1, parseInt(claimedAt) - 1)).to.be.equal(ether(2750));
         expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(3750));
       });
@@ -739,7 +739,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
       expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
       // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 4250
-      expect(await vesting.debugLastCachedVotes(bob)).to.be.equal(ether(4250));
+      expect(await vesting.getLastCachedVotes(bob)).to.be.equal(ether(4250));
       expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(4250));
     });
 
@@ -794,7 +794,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
       // but the cached balance is still positive, so the delegators could re-delegate their votes
       // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 4250
-      expect(await vesting.debugLastCachedVotes(member1)).to.be.equal(ether(4250));
+      expect(await vesting.getLastCachedVotes(member1)).to.be.equal(ether(4250));
       expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(0));
 
       // and bob claims back his delegated votes from member 1
@@ -803,11 +803,11 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await time.increase(1);
 
       expect(await vesting.getPriorVotes(member1, delegatedBackAt)).to.be.equal(ether(0));
-      expect(await vesting.debugLastCachedVotes(member1)).to.be.equal(ether(0));
+      expect(await vesting.getLastCachedVotes(member1)).to.be.equal(ether(0));
 
       expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
       // and 750 tokens was claimed earlier
-      expect(await vesting.debugLastCachedVotes(bob)).to.be.equal(ether(4250));
+      expect(await vesting.getLastCachedVotes(bob)).to.be.equal(ether(4250));
       expect(await vesting.getPriorVotes(bob, delegatedBackAt)).to.be.equal(ether(4250));
     });
 
