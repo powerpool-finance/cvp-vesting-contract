@@ -13,10 +13,14 @@ More details in 👉
 More details in 👉: 
 - [`PPVesting.sol` Security Audit Report by Pessimistic](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vesting-security.pdf);
 - [`PPVesting.sol` Security Audit Report V2 by Pessimistic](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/powerPool-vestingV2-security.pdf);
+- [`PPTimedVesting.sol` Security Audit Report by MixBytes](https://github.com/powerpool-finance/powerpool-docs/blob/master/audits/PPTimedVesting_MixBytes.pdf);
 
 ## Contracts on Ethereum Main Network
 
-- `PPVesting ` - [0xFD28bE82e453860F41c36029175377F470aF754b](https://etherscan.io/address/0xFD28bE82e453860F41c36029175377F470aF754b).
+## Active
+
+## Deprecated
+- `PPVesting ` - [0xFD28bE82e453860F41c36029175377F470aF754b](https://etherscan.io/address/0xFD28bE82e453860F41c36029175377F470aF754b)
 
 ## Testing and Development
 
