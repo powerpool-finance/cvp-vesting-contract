@@ -38,6 +38,8 @@ task('deploy-vesting', 'Deploy Vesting')
       sendOptions
     );
 
+    await vesting.transferOwnership('0xb258302c3f209491d604165549079680708581cc', sendOptions);
+
     if (networkId !== 1) {
       await cvp.transfer(vesting.address, web3.utils.toWei('500000', 'ether'));
     }
