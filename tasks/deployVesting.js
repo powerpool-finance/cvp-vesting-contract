@@ -6,7 +6,7 @@ const _ = require('lodash');
 task('deploy-vesting', 'Deploy Vesting')
   .setAction(async () => {
     const PPVesting = await artifacts.require('PPTimedVesting');
-    const CVP = await artifacts.require('IERC20');
+    const CVP = await artifacts.require('@openzeppelin/contracts/token/ERC20/IERC20.sol:IERC20');
 
     const {web3} = PPVesting;
 
@@ -18,14 +18,13 @@ task('deploy-vesting', 'Deploy Vesting')
     const networkId = parseInt(await web3.eth.net.getId());
 
     const startV = 1601509764;
-    const configByNetworkId = {
+    const config = {
       cvpAddress: networkId === 1 ? '0x38e4adb44ef08f22f5b5b76a8f0c2d0dcbe7dca1' : '0x86D0FFCf65eE225217e0Fe85DDB2B79A8CE7eDE2',
       startV,
       durationV: 31560000,
       startT: startV + 15780000,
       durationT: 47340000
     };
-    const config = configByNetworkId[networkId];
     const cvp = await CVP.at(config.cvpAddress);
 
     const vesting = await PPVesting.new(
@@ -38,6 +37,8 @@ task('deploy-vesting', 'Deploy Vesting')
       web3.utils.toWei('50000', 'ether'),
       sendOptions
     );
+
+    await vesting.transferOwnership('0xb258302c3f209491d604165549079680708581cc', sendOptions);
 
     if (networkId !== 1) {
       await cvp.transfer(vesting.address, web3.utils.toWei('500000', 'ether'));
