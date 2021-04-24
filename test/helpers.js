@@ -13,11 +13,11 @@ module.exports = {
   getBlockTimestampByRes,
   getLatestBlockTimestamp,
   getLatestBlockNumber,
-  ether
+  ether,
 };
 
 function buildEndpoint(endpoint) {
-  return async function(...args) {
+  return async function (...args) {
     return new Promise((resolve, reject) => {
       web3.currentProvider.send(
         {
@@ -40,7 +40,7 @@ function buildEndpoint(endpoint) {
         },
       );
     });
-  }
+  };
 }
 
 async function increaseTimeTo(value) {
@@ -70,13 +70,13 @@ async function getBlockTimestampByRes(res) {
 
 async function logBlock(block) {
   let timestamp = (await web3.eth.getBlock(block)).timestamp;
-  console.log(`Block #${block} at ${timestamp}`)
+  console.log(`Block #${block} at ${timestamp}`);
 }
 
 async function logLatestBlock(msg) {
   let block = (await time.latestBlock()).toNumber();
   let timestamp = (await web3.eth.getBlock(block)).timestamp;
-  console.log(`${msg ? msg : 'Latest'}: block #${block} at ${timestamp}`)
+  console.log(`${msg ? msg : 'Latest'}: block #${block} at ${timestamp}`);
 }
 
 function ether(value) {

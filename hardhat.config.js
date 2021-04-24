@@ -11,10 +11,10 @@ const _ = require('lodash');
 
 function getAccounts(network) {
   const fileName = homeDir + '/.ethereum/' + network;
-  if(!fs.existsSync(fileName)) {
+  if (!fs.existsSync(fileName)) {
     return [];
   }
-  return [_.trim('0x' + fs.readFileSync(fileName, {encoding: 'utf8'}))];
+  return [_.trim('0x' + fs.readFileSync(fileName, { encoding: 'utf8' }))];
 }
 
 const config = {
@@ -33,8 +33,9 @@ const config = {
   mocha: {},
   networks: {
     hardhat: {
+      hardfork: 'berlin',
       chainId: 31337,
-      allowUnlimitedContractSize: true
+      allowUnlimitedContractSize: true,
     },
     local: {
       url: 'http://127.0.0.1:8545',
@@ -48,7 +49,7 @@ const config = {
     kovan: {
       url: 'https://kovan-eth.compound.finance',
       gasPrice: 10 ** 9,
-      accounts: getAccounts('kovan')
+      accounts: getAccounts('kovan'),
     },
     coverage: {
       url: 'http://127.0.0.1:8555',

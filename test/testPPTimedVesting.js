@@ -117,46 +117,112 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe('increaseDurationT()', async function() {
+  describe('increaseDurationT()', async function () {
     let prevStartT;
     let prevEndT;
     beforeEach(async function () {
       await vesting.transferOwnership(owner);
       prevStartT = await vesting.startT();
       prevEndT = await vesting.endT();
-    })
+    });
 
-    it('should allow the owner increasing durationT', async function() {
-      const newDuration = time.duration.days(179);
-      const newEndT = (new BN(prevStartT)).add(newDuration).toString();
+    it('should allow the owner increasing durationT', async function () {
+      const newDuration = time.duration.days(180);
+      const newEndT = new BN(prevStartT).add(newDuration).toString();
       const res = await vesting.increaseDurationT(newDuration.toString(), { from: owner });
       expectEvent(res, 'IncreaseDurationT', {
         prevDurationT: '20',
         prevEndT: prevEndT,
-        newDurationT: time.duration.days(179).toString(),
+        newDurationT: time.duration.days(180).toString(),
         newEndT: newEndT,
       });
       expect(await vesting.durationT()).to.be.equal(newDuration.toString());
       expect(await vesting.endT()).to.be.equal(newEndT);
     });
 
-    it('should deny increasing duration by less than the current', async function() {
+    it('should deny increasing duration by less than the current', async function () {
       await expect(vesting.increaseDurationT(19, { from: owner })).to.be.revertedWith(
         'Vesting::increaseDurationT: Too small duration',
       );
-    })
+    });
 
-    it('should deny increasing duration by more than 180 days', async function() {
+    it('should deny increasing duration by more than 180 days', async function () {
       await expect(vesting.increaseDurationT(time.duration.days(181), { from: owner })).to.be.revertedWith(
         'Vesting::increaseDurationT: Too big duration',
       );
-    })
+    });
 
-    it('should deny non-owner calling the method', async function() {
-      await expect(vesting.increaseDurationT(21, { from: bob })).to.be.revertedWith(
+    it('should deny non-owner calling the method', async function () {
+      await expect(vesting.increaseDurationT(21, { from: bob })).to.be.revertedWith('Ownable: caller is not the owner');
+    });
+  });
+
+  describe('increasePersonalDurationT()', async function () {
+    let prevStartT;
+    let prevEndT;
+    beforeEach(async function () {
+      await vesting.transferOwnership(owner);
+      prevStartT = await vesting.startT();
+      prevEndT = await vesting.endT();
+    });
+
+    it('should allow the owner increasing durationT for a member', async function () {
+      const newDuration = time.duration.days(179);
+      const newEndT = new BN(prevStartT).add(newDuration).toString();
+      const res = await vesting.increasePersonalDurationT(member1, newDuration.toString(), { from: owner });
+      expectEvent(res, 'IncreasePersonalDurationT', {
+        prevEvaluatedDurationT: '20',
+        prevEvaluatedEndT: prevEndT,
+        prevPersonalDurationT: '0',
+        newPersonalDurationT: time.duration.days(179).toString(),
+        newPersonalEndT: newEndT,
+      });
+      const member = await vesting.members(member1);
+
+      expect(await member.personalDurationT).to.be.equal(newDuration.toString());
+      expect(await vesting.getMemberDurationT(member1)).to.be.equal(newDuration.toString());
+      expect(await vesting.getMemberEndT(member1)).to.be.equal(newEndT);
+    });
+
+    it('should deny increasing duration by less than the current global', async function () {
+      await expect(vesting.increasePersonalDurationT(member1, 19, { from: owner })).to.be.revertedWith(
+        'Vesting::increasePersonalDurationT: Too small duration',
+      );
+    });
+
+    it('should deny increasing duration by less than the current personal', async function () {
+      const firstDuration = time.duration.days(100);
+      const invalidSecondDuration1 = time.duration.days(100);
+      const validSecondDuration = time.duration.days(101);
+      await vesting.increasePersonalDurationT(member1, firstDuration.toString(), { from: owner });
+      await expect(
+        vesting.increasePersonalDurationT(member1, invalidSecondDuration1.toString(), { from: owner }),
+      ).to.be.revertedWith('Vesting::increasePersonalDurationT: Too small duration');
+      await vesting.increasePersonalDurationT(member1, validSecondDuration.toString(), { from: owner });
+    });
+
+    it('should deny increasing duration by more than 180 days form 0 personal', async function () {
+      await expect(
+        vesting.increasePersonalDurationT(member1, time.duration.days(181), { from: owner }),
+      ).to.be.revertedWith('Vesting::increasePersonalDurationT: Too big duration');
+    });
+
+    it('should deny increasing duration by more than 180 days from non-0 personal', async function () {
+      const firstDuration = time.duration.days(100);
+      const invalidSecondDuration = time.duration.days(281);
+      const validSecondDuration = time.duration.days(280);
+      await vesting.increasePersonalDurationT(member1, firstDuration.toString(), { from: owner });
+      await expect(
+        vesting.increasePersonalDurationT(member1, invalidSecondDuration.toString(), { from: owner }),
+      ).to.be.revertedWith('Vesting::increasePersonalDurationT: Too big duration');
+      await vesting.increasePersonalDurationT(member1, validSecondDuration.toString(), { from: owner });
+    });
+
+    it('should deny non-owner calling the method', async function () {
+      await expect(vesting.increasePersonalDurationT(member1, 21, { from: bob })).to.be.revertedWith(
         'Ownable: caller is not the owner',
       );
-    })
+    });
   });
 
   describe('get available pure function', () => {
@@ -234,49 +300,49 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
   describe('getAvailableTokens', () => {
     it('should return correct values before the start', async function () {
       expect(await vesting.hasTokenVestingStarted()).to.be.false;
-      expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(0));
-      expect(await vesting.getAvailableTokens(5000)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(0, durationT)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(5000, durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on 0th second', async function () {
       await evmMine(startT);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
-      expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(0));
-      expect(await vesting.getAvailableTokens(5000)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(0, durationT)).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(5000, durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the first second after the start', async function () {
       await evmMine(startT + 1);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
-      expect(await vesting.getAvailableTokens(0)).to.be.equal(ether(250));
-      expect(await vesting.getAvailableTokens(ether(250))).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(0, durationT)).to.be.equal(ether(250));
+      expect(await vesting.getAvailableTokens(ether(250), durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the pre-last second', async function () {
       await evmMine(startT + parseInt(durationT) - 1);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.hasTokenVestingEnded()).to.be.false;
-      expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(4750));
-      expect(await vesting.getAvailableTokens(ether(4000))).to.be.equal(ether(750));
-      expect(await vesting.getAvailableTokens(ether(4750))).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(ether(0), durationT)).to.be.equal(ether(4750));
+      expect(await vesting.getAvailableTokens(ether(4000), durationT)).to.be.equal(ether(750));
+      expect(await vesting.getAvailableTokens(ether(4750), durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last second', async function () {
       await evmMine(startT + parseInt(durationT));
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.hasTokenVestingEnded()).to.be.true;
-      expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(5000));
-      expect(await vesting.getAvailableTokens(ether(4500))).to.be.equal(ether(500));
-      expect(await vesting.getAvailableTokens(ether(5000))).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(ether(0), durationT)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokens(ether(4500), durationT)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokens(ether(5000), durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last second', async function () {
       await evmMine(startT + parseInt(durationT) + 5);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.hasTokenVestingEnded()).to.be.true;
-      expect(await vesting.getAvailableTokens(ether(0))).to.be.equal(ether(5000));
-      expect(await vesting.getAvailableTokens(ether(4500))).to.be.equal(ether(500));
-      expect(await vesting.getAvailableTokens(ether(5000))).to.be.equal(ether(0));
+      expect(await vesting.getAvailableTokens(ether(0), durationT)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokens(ether(4500), durationT)).to.be.equal(ether(500));
+      expect(await vesting.getAvailableTokens(ether(5000), durationT)).to.be.equal(ether(0));
     });
   });
 
@@ -300,6 +366,14 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await evmMine(startT + parseInt(durationT));
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
+    });
+
+    it('should calculate for global last second for a member with a custom endT', async function () {
+      await vesting.increasePersonalDurationT(member1, durationT * 2);
+      await evmMine(startT + parseInt(durationT));
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(2500));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
@@ -343,6 +417,22 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member2)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member3)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member4)).to.be.equal(ether(0));
+    });
+
+    it('should return correct values for a member with a personal durationT', async function () {
+      await evmMine(startT + parseInt(durationT) + 5);
+      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      await vesting.increasePersonalDurationT(member2, durationT * 2);
+
+      let current = (await time.latest()).toNumber();
+      expect(await vesting.getAvailableTokensForMemberAt(current + 1, member1)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberAt(current + 1, member2)).to.be.equal(ether(3375));
+      expect(await vesting.getAvailableTokensForMemberAt(current + 1, member3)).to.be.equal(ether(5000));
+      expect(await vesting.getAvailableTokensForMemberAt(current + 1, member4)).to.be.equal(ether(0));
+
+      await evmMine(startT + parseInt(durationT * 2) + 5);
+      current = (await time.latest()).toNumber();
+      expect(await vesting.getAvailableTokensForMemberAt(current + 1, member2)).to.be.equal(ether(5000));
     });
   });
 
@@ -690,6 +780,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(member1Details.transferred).to.be.true;
       expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
       expect(member1Details.alreadyClaimedTokens).to.be.equal('0');
+      expect(member1Details.personalDurationT).to.be.equal('0');
 
       const bobDetails = await vesting.members(bob);
       expect(bobDetails.active).to.be.true;
@@ -697,6 +788,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       // nothing had been claimed during a transfer since the vote vesting period has ended
       expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(0));
       expect(bobDetails.alreadyClaimedTokens).to.be.equal('0');
+      expect(bobDetails.personalDurationT).to.be.equal('0');
     });
 
     it('should correctly transfer with non-delegated votes and some claimed tokens', async function () {
@@ -734,6 +826,54 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       // +1000 from auto-claimed votes for bob
       expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(5000));
       expect(bobDetails.alreadyClaimedTokens).to.be.equal(ether(750));
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
+      expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
+      expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
+      // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 4250
+      expect(await vesting.getLastCachedVotes(bob)).to.be.equal(ether(4250));
+      expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(4250));
+    });
+
+    it('should correctly transfer with a custom personalDurationT', async function () {
+      await evmMine(startT + 2);
+      let res = await vesting.claimTokens(bob, { from: member1 });
+      const claimedAt = res.receipt.blockNumber;
+      await time.increase(1);
+      await vesting.increasePersonalDurationT(member1, durationT + 10);
+
+      // before check
+      let member1Details = await vesting.members(member1);
+      expect(member1Details.active).to.be.true;
+      expect(member1Details.transferred).to.be.false;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal(ether(4000));
+      expect(member1Details.alreadyClaimedTokens).to.be.equal(ether(750));
+      expect(member1Details.personalDurationT).to.be.equal(String(durationT + 10));
+      // 4000 - 750
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(3250));
+      expect(await vesting.getPriorVotes(bob, claimedAt)).to.be.equal(ether(0));
+
+      // transfer
+      res = await vesting.transfer(bob, { from: member1 });
+      const transferredAt = res.receipt.blockNumber;
+      await time.increase(1);
+
+      // after check
+      expect(await vesting.voteDelegations(bob)).to.be.equal(constants.ZERO_ADDRESS);
+      member1Details = await vesting.members(member1);
+      expect(member1Details.active).to.be.false;
+      expect(member1Details.transferred).to.be.true;
+      expect(member1Details.alreadyClaimedVotes).to.be.equal('0');
+      expect(member1Details.alreadyClaimedTokens).to.be.equal('0');
+      expect(member1Details.personalDurationT).to.be.equal('0');
+
+      const bobDetails = await vesting.members(bob);
+      expect(bobDetails.active).to.be.true;
+      expect(bobDetails.transferred).to.be.false;
+      // +1000 from auto-claimed votes for bob
+      expect(bobDetails.alreadyClaimedVotes).to.be.equal(ether(5000));
+      expect(bobDetails.alreadyClaimedTokens).to.be.equal(ether(750));
+      expect(bobDetails.personalDurationT).to.be.equal(String(durationT + 10));
       expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
