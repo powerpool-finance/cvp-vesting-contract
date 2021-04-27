@@ -24,7 +24,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
   using SafeMath for uint256;
   using SafeCast for uint256;
 
-  // @notice Emitted when the owner disables a member
+  // @notice Emitted when a member is disabled either by the owner or the by the member itself
   event DisableMember(address indexed member, uint256 tokensRemainder);
 
   // @notice Emitted once when the contract was deployed
