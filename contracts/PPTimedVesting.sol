@@ -24,6 +24,9 @@ contract PPTimedVesting is CvpInterface, Ownable {
   using SafeMath for uint256;
   using SafeCast for uint256;
 
+  // @notice Emitted when the owner disables a member
+  event DisableMember(address indexed member, uint256 tokensRemainder);
+
   // @notice Emitted once when the contract was deployed
   event Init(address[] members);
 
@@ -32,7 +35,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
   // @notice Emitted when the owner increases personalDurationT correspondingly increasing the personalEndT timestamp
   event IncreasePersonalDurationT(
-    address member,
+    address indexed member,
     uint256 prevEvaluatedDurationT,
     uint256 prevEvaluatedEndT,
     uint256 prevPersonalDurationT,
@@ -482,7 +485,48 @@ contract PPTimedVesting is CvpInterface, Ownable {
     );
   }
 
+  function disableMember(address _member) external onlyOwner {
+    _disableMember(_member);
+  }
+
+  function _disableMember(address _member) internal {
+    Member memory from = members[_member];
+
+    require(from.active == true, "Vesting::_disableMember: The member is inactive");
+
+    members[_member].active = false;
+
+    address currentDelegate = voteDelegations[_member];
+
+    uint32 nCheckpoints = numCheckpoints[_member];
+    if (nCheckpoints != 0 && currentDelegate != address(0) && currentDelegate != _member) {
+      uint96 adjustedVotes =
+        sub96(from.alreadyClaimedVotes, from.alreadyClaimedTokens, "Vesting::_disableMember: AdjustedVotes underflow");
+
+      if (adjustedVotes > 0) {
+        _subDelegatedVotesCache(currentDelegate, adjustedVotes);
+      }
+    }
+
+    delete voteDelegations[_member];
+
+    uint256 tokensRemainder =
+      sub96(amountPerMember, from.alreadyClaimedTokens, "Vesting::_disableMember: BalanceRemainder overflow");
+    IERC20(token).transfer(address(1), uint256(tokensRemainder));
+
+    emit DisableMember(_member, tokensRemainder);
+  }
+
   /*** Member Methods ***/
+
+  /**
+   * @notice An active member can renounce his membership once.
+   * @dev This action is irreversible. The disabled member can't be enabled again.
+   *      Disables all the member's vote checkpoints. Transfers all the member's unclaimed tokens to the address(1).
+   */
+  function renounceMembership() external {
+    _disableMember(msg.sender);
+  }
 
   /**
    * @notice An active member claims a distributed amount of votes

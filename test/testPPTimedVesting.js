@@ -1,6 +1,6 @@
 const { ether: etherBN, time, constants, expectEvent } = require('@openzeppelin/test-helpers');
 const { solidity } = require('ethereum-waffle');
-const { evmMine } = require('./helpers');
+const { evmMine, evmSetNextBlockTimestamp } = require('./helpers');
 
 const chai = require('chai');
 const PPTimedVesting = artifacts.require('PPTimedVesting');
@@ -14,10 +14,21 @@ function ether(value) {
   return etherBN(String(value)).toString();
 }
 
+/**
+ * @param { string } amount
+ * @param { string } times
+ * @returns {string}
+ */
+function bnMul(amount, times) {
+  return (BigInt(amount) * BigInt(times)).toString();
+}
+
 ERC20.numberFormat = 'String';
 PPTimedVesting.numberFormat = 'String';
 
-contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, member4, owner, bob, vault]) {
+const ADDRESS_1 = '0x0000000000000000000000000000000000000001';
+
+contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, member4, owner, bob, vault, stub]) {
   let vesting;
   let startV;
   let durationV;
@@ -114,6 +125,235 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await expect(
         PPTimedVesting.new(bob, startV, durationV, startT, durationT, [member1, member2, member3], amountPerMember),
       ).to.be.revertedWith('Transaction reverted: function call to a non-contract account');
+    });
+  });
+
+  describe('disableMember()/renounceMembership', async function () {
+    beforeEach(async function () {
+      await vesting.transferOwnership(owner);
+      await erc20.transfer(vesting.address, bnMul(amountPerMember, 3), { from: vault });
+    });
+
+    describe('with no vote claims', () => {
+      beforeEach(async function () {
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.true;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal('0');
+        expect(res.alreadyClaimedTokens).to.be.equal('0');
+        expect(await erc20.balanceOf(vesting.address)).to.be.equal(bnMul(amountPerMember, 3));
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.disableMember(member1, { from: owner });
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.renounceMembership({ from: member1 });
+      });
+
+      afterEach(async function () {
+        expectEvent(this.res, 'DisableMember', {
+          member: member1,
+          tokensRemainder: amountPerMember,
+        });
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.false;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal('0');
+        expect(res.alreadyClaimedTokens).to.be.equal('0');
+        expect(await vesting.voteDelegations(member1), constants.ZERO_ADDRESS);
+        expect(await vesting.numCheckpoints(member1), 0);
+        expect(await vesting.checkpoints(member1, 0), 0);
+        expect(await vesting.checkpoints(member1, 1), 0);
+        expect(await vesting.checkpoints(member1, 2), 0);
+        expect(await erc20.balanceOf(vesting.address)).to.be.equal(bnMul(amountPerMember, 2));
+        expect(await erc20.balanceOf(ADDRESS_1)).to.be.equal(ether(5000));
+      });
+    });
+
+    describe('with no vote claims but delegations', () => {
+      beforeEach(async function () {
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.true;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal('0');
+        expect(res.alreadyClaimedTokens).to.be.equal('0');
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('0');
+        expect(await vesting.numCheckpoints(member2)).to.be.equal('0');
+        await vesting.delegateVotes(member2, { from: member1 });
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
+        expect(await vesting.numCheckpoints(member2)).to.be.equal('1');
+        expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.disableMember(member1, { from: owner });
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.renounceMembership({ from: member1 });
+      });
+
+      afterEach(async function () {
+        expectEvent(this.res, 'DisableMember', {
+          member: member1,
+          tokensRemainder: amountPerMember,
+        });
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.false;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal('0');
+        expect(res.alreadyClaimedTokens).to.be.equal('0');
+        expect(await vesting.voteDelegations(member1)).to.be.equal(constants.ZERO_ADDRESS);
+
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
+        expect((await vesting.checkpoints(member1, 0)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member1, 1)).votes).to.be.equal('0');
+
+        expect(await vesting.numCheckpoints(member2)).to.be.equal('1');
+        expect((await vesting.checkpoints(member2, 0)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member2, 1)).votes).to.be.equal('0');
+
+        expect(await erc20.balanceOf(ADDRESS_1)).to.be.equal(ether(5000));
+      });
+    });
+
+    describe('with one vote claim and no delegations', () => {
+      beforeEach(async function () {
+        await evmSetNextBlockTimestamp(startV + 8);
+        await vesting.claimTokens(member2, { from: member1 });
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.true;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal(ether(4000));
+        expect(res.alreadyClaimedTokens).to.be.equal(ether(750));
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
+        expect((await vesting.checkpoints(member1, 0)).votes).to.be.equal(ether('3250'));
+        expect((await vesting.checkpoints(member1, 1)).votes).to.be.equal('0');
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.disableMember(member1, { from: owner });
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.renounceMembership({ from: member1 });
+      });
+
+      afterEach(async function () {
+        expectEvent(this.res, 'DisableMember', {
+          member: member1,
+          tokensRemainder: ether(4250),
+        });
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.false;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal(ether(4000));
+        expect(res.alreadyClaimedTokens).to.be.equal(ether(750));
+        expect(await vesting.voteDelegations(member1)).to.be.equal(constants.ZERO_ADDRESS);
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('1');
+        expect((await vesting.checkpoints(member1, 0)).votes).to.be.equal(ether('3250'));
+        expect((await vesting.checkpoints(member1, 1)).votes).to.be.equal('0');
+        expect(await erc20.balanceOf(ADDRESS_1)).to.be.equal(ether(4250));
+      });
+    });
+
+    describe('with vote claims and delegations', () => {
+      beforeEach(async function () {
+        await evmSetNextBlockTimestamp(startV + 6);
+        await vesting.claimTokens(stub, { from: member1 });
+        await vesting.delegateVotes(member2, { from: member1 });
+        await evmSetNextBlockTimestamp(startV + 8);
+        await vesting.claimTokens(stub, { from: member1 });
+
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.true;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal(ether(4000));
+        expect(res.alreadyClaimedTokens).to.be.equal(ether(750));
+
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('2');
+        expect(await vesting.numCheckpoints(member2)).to.be.equal('2');
+
+        expect((await vesting.checkpoints(member1, 0)).votes).to.be.equal(ether('2750'));
+        expect((await vesting.checkpoints(member1, 1)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member1, 2)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member2, 0)).votes).to.be.equal(ether('2750'));
+        expect((await vesting.checkpoints(member2, 1)).votes).to.be.equal(ether('3250'));
+        expect((await vesting.checkpoints(member2, 2)).votes).to.be.equal('0');
+        expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.disableMember(member1, { from: owner });
+      });
+
+      it('should allow the owner disabling a member with no any claims and no delegations', async function () {
+        this.res = await vesting.renounceMembership({ from: member1 });
+      });
+
+      afterEach(async function () {
+        expectEvent(this.res, 'DisableMember', {
+          member: member1,
+          tokensRemainder: ether(4250),
+        });
+        let res = await vesting.members(member1);
+        expect(res.active).to.be.false;
+        expect(res.transferred).to.be.false;
+        expect(res.alreadyClaimedVotes).to.be.equal(ether(4000));
+        expect(res.alreadyClaimedTokens).to.be.equal(ether(750));
+        expect(await vesting.voteDelegations(member1)).to.be.equal(constants.ZERO_ADDRESS);
+
+        expect(await vesting.numCheckpoints(member1)).to.be.equal('2');
+        expect(await vesting.numCheckpoints(member2)).to.be.equal('3');
+
+        expect((await vesting.checkpoints(member1, 0)).votes).to.be.equal(ether('2750'));
+        expect((await vesting.checkpoints(member1, 1)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member1, 2)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member2, 0)).votes).to.be.equal(ether('2750'));
+        expect((await vesting.checkpoints(member2, 1)).votes).to.be.equal(ether('3250'));
+        expect((await vesting.checkpoints(member2, 2)).votes).to.be.equal('0');
+        expect((await vesting.checkpoints(member2, 3)).votes).to.be.equal('0');
+
+        expect(await erc20.balanceOf(ADDRESS_1)).to.be.equal(ether(4250));
+      });
+    });
+
+    describe('disableMember()', () => {
+      it('should deny non-owner calling the method', async function () {
+        await expect(vesting.disableMember(member1, { from: member1 })).to.be.revertedWith(
+          ' Ownable: caller is not the owner',
+        );
+      });
+
+      it('should deny disabling non-existent member', async function () {
+        await expect(vesting.disableMember(stub, { from: owner })).to.be.revertedWith(
+          'Vesting::_disableMember: The member is inactive',
+        );
+      });
+
+      it('should deny disabling an already disabled member', async function () {
+        await vesting.disableMember(member1, { from: owner });
+        await expect(vesting.disableMember(member1, { from: owner })).to.be.revertedWith(
+          'Vesting::_disableMember: The member is inactive',
+        );
+      });
+    });
+
+    describe('renounceMembership()', () => {
+      it('should deny renouncing for non-existent member', async function () {
+        await expect(vesting.renounceMembership({ from: stub })).to.be.revertedWith(
+          'Vesting::_disableMember: The member is inactive',
+        );
+      });
+
+      it('should deny renouncing for an already disabled member', async function () {
+        await vesting.renounceMembership({ from: member1 });
+        await expect(vesting.renounceMembership({ from: member1 })).to.be.revertedWith(
+          'Vesting::_disableMember: The member is inactive',
+        );
+      });
     });
   });
 
@@ -965,6 +1205,13 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await vesting.transfer(bob, { from: member1 });
       await expect(vesting.transfer(member1, { from: bob })).to.be.revertedWith(
         'Vesting::transfer: To address has been already used',
+      );
+    });
+
+    it('should deny transferring a disabled account', async function () {
+      await vesting.disableMember(member1);
+      await expect(vesting.transfer(member1, { from: bob })).to.be.revertedWith(
+        'Vesting::transfer: From member is inactive',
       );
     });
   });
