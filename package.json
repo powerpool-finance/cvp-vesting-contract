@@ -70,6 +70,7 @@
     "lint:js": "eslint --config .eslintrc.json --ignore-path ./.eslintignore --ext .js .",
     "node": "hardhat node",
     "prettier": "prettier --config .prettierrc --write \"**/*.{js,json,md,sol,ts}\"",
+    "prettier:sol": "prettier --config .prettierrc --write \"**/*.sol\"",
     "prettier:list-different": "prettier --config .prettierrc --list-different \"**/*.{js,json,md,sol,ts}\"",
     "test": "hardhat test --network hardhat --no-compile",
     "test:local": "hardhat test --network local",
