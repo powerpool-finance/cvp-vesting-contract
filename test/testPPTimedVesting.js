@@ -397,7 +397,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
   });
 
-  describe('increasePersonalDurationT()', async function () {
+  describe('increasePersonalDurationsT()', async function () {
     let prevStartT;
     let prevEndT;
     beforeEach(async function () {
@@ -409,7 +409,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     it('should allow the owner increasing durationT for a member', async function () {
       const newDuration = time.duration.days(179);
       const newEndT = new BN(prevStartT).add(newDuration).toString();
-      const res = await vesting.increasePersonalDurationT(member1, newDuration.toString(), { from: owner });
+      const res = await vesting.increasePersonalDurationsT([member1], [newDuration.toString()], { from: owner });
       expectEvent(res, 'IncreasePersonalDurationT', {
         prevEvaluatedDurationT: '20',
         prevEvaluatedEndT: prevEndT,
@@ -424,8 +424,20 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getMemberEndT(member1)).to.be.equal(newEndT);
     });
 
+    it('should deny mismatching argument lengths', async function () {
+      await expect(vesting.increasePersonalDurationsT([member1], [19, 20], { from: owner })).to.be.revertedWith(
+        'LENGTH_MISMATCH',
+      );
+    });
+
     it('should deny increasing duration by less than the current global', async function () {
-      await expect(vesting.increasePersonalDurationT(member1, 19, { from: owner })).to.be.revertedWith(
+      await expect(vesting.increasePersonalDurationsT([member1], [19], { from: owner })).to.be.revertedWith(
+        'Vesting::increasePersonalDurationT: Too small duration',
+      );
+    });
+
+    it('should deny increasing duration for an invalid member', async function () {
+      await expect(vesting.increasePersonalDurationsT([bob], [19], { from: owner })).to.be.revertedWith(
         'Vesting::increasePersonalDurationT: Too small duration',
       );
     });
@@ -434,16 +446,16 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       const firstDuration = time.duration.days(100);
       const invalidSecondDuration1 = time.duration.days(100);
       const validSecondDuration = time.duration.days(101);
-      await vesting.increasePersonalDurationT(member1, firstDuration.toString(), { from: owner });
+      await vesting.increasePersonalDurationsT([member1], [firstDuration.toString()], { from: owner });
       await expect(
-        vesting.increasePersonalDurationT(member1, invalidSecondDuration1.toString(), { from: owner }),
+        vesting.increasePersonalDurationsT([member1], [invalidSecondDuration1.toString()], { from: owner }),
       ).to.be.revertedWith('Vesting::increasePersonalDurationT: Too small duration');
-      await vesting.increasePersonalDurationT(member1, validSecondDuration.toString(), { from: owner });
+      await vesting.increasePersonalDurationsT([member1], [validSecondDuration.toString()], { from: owner });
     });
 
     it('should deny increasing duration by more than 180 days form 0 personal', async function () {
       await expect(
-        vesting.increasePersonalDurationT(member1, time.duration.days(181), { from: owner }),
+        vesting.increasePersonalDurationsT([member1], [time.duration.days(181)], { from: owner }),
       ).to.be.revertedWith('Vesting::increasePersonalDurationT: Too big duration');
     });
 
@@ -451,15 +463,15 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       const firstDuration = time.duration.days(100);
       const invalidSecondDuration = time.duration.days(281);
       const validSecondDuration = time.duration.days(280);
-      await vesting.increasePersonalDurationT(member1, firstDuration.toString(), { from: owner });
+      await vesting.increasePersonalDurationsT([member1], [firstDuration.toString()], { from: owner });
       await expect(
-        vesting.increasePersonalDurationT(member1, invalidSecondDuration.toString(), { from: owner }),
+        vesting.increasePersonalDurationsT([member1], [invalidSecondDuration.toString()], { from: owner }),
       ).to.be.revertedWith('Vesting::increasePersonalDurationT: Too big duration');
-      await vesting.increasePersonalDurationT(member1, validSecondDuration.toString(), { from: owner });
+      await vesting.increasePersonalDurationsT([member1], [validSecondDuration.toString()], { from: owner });
     });
 
     it('should deny non-owner calling the method', async function () {
-      await expect(vesting.increasePersonalDurationT(member1, 21, { from: bob })).to.be.revertedWith(
+      await expect(vesting.increasePersonalDurationsT([member1], [21], { from: bob })).to.be.revertedWith(
         'Ownable: caller is not the owner',
       );
     });
@@ -610,7 +622,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should calculate for global last second for a member with a custom endT', async function () {
-      await vesting.increasePersonalDurationT(member1, durationT * 2);
+      await vesting.increasePersonalDurationsT([member1], [durationT * 2]);
       await evmMine(startT + parseInt(durationT));
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(2500));
@@ -662,7 +674,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     it('should return correct values for a member with a personal durationT', async function () {
       await evmMine(startT + parseInt(durationT) + 5);
       expect(await vesting.hasTokenVestingStarted()).to.be.true;
-      await vesting.increasePersonalDurationT(member2, durationT * 2);
+      await vesting.increasePersonalDurationsT([member2], [durationT * 2]);
 
       let current = (await time.latest()).toNumber();
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member1)).to.be.equal(ether(5000));
@@ -788,7 +800,6 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
         expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(ether(750));
 
         await time.increase(1);
-        expect(await vesting.hasVoteVestingEnded()).to.be.equal(false);
         expect(await vesting.getPriorVotes(member1, parseInt(claimedAt) - 1)).to.be.equal(ether(2750));
         expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(3250));
       });
@@ -1080,7 +1091,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       let res = await vesting.claimTokens(bob, { from: member1 });
       const claimedAt = res.receipt.blockNumber;
       await time.increase(1);
-      await vesting.increasePersonalDurationT(member1, durationT + 10);
+      await vesting.increasePersonalDurationsT([member1], [durationT + 10]);
 
       // before check
       let member1Details = await vesting.members(member1);

@@ -460,7 +460,19 @@ contract PPTimedVesting is CvpInterface, Ownable {
     emit IncreaseDurationT(prevDurationT, prevEndT, _newDurationT, newEndT);
   }
 
-  function increasePersonalDurationT(address _member, uint256 _newPersonalDurationT) external onlyOwner {
+  function increasePersonalDurationsT(address[] calldata _members, uint256[] calldata _newPersonalDurationsT)
+    external
+    onlyOwner
+  {
+    uint256 len = _members.length;
+    require(_newPersonalDurationsT.length == len, "LENGTH_MISMATCH");
+
+    for (uint256 i = 0; i < len; i++) {
+      _increasePersonalDurationT(_members[i], _newPersonalDurationsT[i]);
+    }
+  }
+
+  function _increasePersonalDurationT(address _member, uint256 _newPersonalDurationT) internal {
     Member memory member = members[_member];
     uint256 prevPersonalDurationT = getLoadedMemberDurationT(member);
 

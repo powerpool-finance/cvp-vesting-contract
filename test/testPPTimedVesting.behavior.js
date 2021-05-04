@@ -359,8 +359,8 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
     });
   });
 
-  describe('increasePersonalDurationT', () => {
-    it('should allow claiming after increasePersonalDurationT', async function () {
+  describe('increasePersonalDurationsT', () => {
+    it('should allow claiming after increasePersonalDurationsT', async function () {
       // Setup...
       const currentTimestamp = (await time.latest()).toNumber();
       startV = parseInt(currentTimestamp) + months(1);
@@ -387,10 +387,10 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await erc20.balanceOf(member1)).to.be.equal(TMS(1));
 
       // Step #2. IncreaseDurationT
-      await expect(vesting.increasePersonalDurationT(member1, months(17))).to.be.revertedWith(
+      await expect(vesting.increasePersonalDurationsT([member1], [months(17)])).to.be.revertedWith(
         'Vesting::increasePersonalDurationT: Too small duration',
       );
-      await vesting.increasePersonalDurationT(member1, months(20));
+      await vesting.increasePersonalDurationsT([member1], [months(20)]);
 
       const TMS2 = buildMS(months(20));
 
@@ -452,7 +452,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       const block2 = await getLatestBlockNumber();
 
       // Step #3. IncreasePersonalDurationT
-      await vesting.increasePersonalDurationT(member1, months(20));
+      await vesting.increasePersonalDurationsT([member1], [months(20)]);
       const TMS2 = buildMS(months(20));
       const TMB2 = buildMB(months(20));
 
@@ -536,7 +536,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         block2 = await getLatestBlockNumber();
 
         // Step #2.5. IncreasePersonalDurationT (18 -> 20)
-        await vesting.increasePersonalDurationT(member1, months(20));
+        await vesting.increasePersonalDurationsT([member1], [months(20)]);
 
         // Step #3. Member #1 claimV #2
         await evmSetNextBlockTimestamp(startV + months(8));
