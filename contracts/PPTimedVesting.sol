@@ -647,7 +647,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
     if (block.timestamp <= endT_) {
       _claimVotes(msg.sender, member, votes);
     } else if (block.timestamp <= endT) {
-      _claimVotes(msg.sender, member, amountPerMember - member.alreadyClaimedVotes);
+      _claimVotes(msg.sender, member, amountPerMember.sub(member.alreadyClaimedVotes));
     }
 
     emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
