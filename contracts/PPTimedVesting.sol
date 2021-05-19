@@ -4,6 +4,7 @@ pragma solidity 0.6.12;
 
 import "./utils/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/SafeCast.sol";
 
 interface IERC20 {
   function totalSupply() external view returns (uint256);
@@ -21,12 +22,26 @@ interface CvpInterface {
  */
 contract PPTimedVesting is CvpInterface, Ownable {
   using SafeMath for uint256;
+  using SafeCast for uint256;
+
+  // @notice Emitted when a member is disabled either by the owner or the by the member itself
+  event DisableMember(address indexed member, uint256 tokensRemainder);
 
   // @notice Emitted once when the contract was deployed
   event Init(address[] members);
 
   // @notice Emitted when the owner increases durationT correspondingly increasing the endT timestamp
   event IncreaseDurationT(uint256 prevDurationT, uint256 prevEndT, uint256 newDurationT, uint256 newEndT);
+
+  // @notice Emitted when the owner increases personalDurationT correspondingly increasing the personalEndT timestamp
+  event IncreasePersonalDurationT(
+    address indexed member,
+    uint256 prevEvaluatedDurationT,
+    uint256 prevEvaluatedEndT,
+    uint256 prevPersonalDurationT,
+    uint256 newPersonalDurationT,
+    uint256 newPersonalEndT
+  );
 
   // @notice Emitted when a member delegates his votes to one of the delegates or to himself
   event DelegateVotes(address indexed from, address indexed to, address indexed previousDelegate, uint96 adjustedVotes);
@@ -69,6 +84,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
   struct Member {
     bool active;
     bool transferred;
+    uint32 personalDurationT;
     uint96 alreadyClaimedVotes;
     uint96 alreadyClaimedTokens;
   }
@@ -241,13 +257,15 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     uint32 nCheckpoints = numCheckpoints[account];
 
+    Member memory member = members[account];
+
     // Not a member
-    if (members[account].active == false) {
+    if (member.active == false) {
       return 0;
     }
 
     // (No one can use vesting votes left on the contract after endT, even for votings created before endT)
-    if (block.timestamp > endT) {
+    if (block.timestamp > getLoadedMemberEndT(member)) {
       return 0;
     }
 
@@ -283,16 +301,57 @@ contract PPTimedVesting is CvpInterface, Ownable {
   /**
    * @notice Returns available amount for a claim in the given timestamp
    *         by the given member based on the current contract values
+   * @param _atTimestamp The timestamp to calculate available balance for
    * @param _member The member address to return available balance for
-   * @return The available amount for a claim in the next block
+   * @return The available amount for a claim in the provided timestamp
    */
   function getAvailableTokensForMemberAt(uint256 _atTimestamp, address _member) external view returns (uint256) {
-    Member storage member = members[_member];
+    Member memory member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return getAvailable(_atTimestamp, startT, amountPerMember, durationT, member.alreadyClaimedTokens);
+    return
+      getAvailable(
+        _atTimestamp,
+        startT,
+        amountPerMember,
+        getLoadedMemberDurationT(member),
+        member.alreadyClaimedTokens
+      );
+  }
+
+  /**
+   * @notice Returns an evaluated endT value for the given member using
+   *         the member's personalDurationT if it set or the global endT otherwise.
+   * @param _member The member address to return endT for
+   * @return The evaluated endT value
+   */
+  function getMemberEndT(address _member) public view returns (uint256) {
+    return startT.add(getMemberDurationT(_member));
+  }
+
+  /**
+   * @notice Returns an evaluated durationT value for the given member using
+   *         the member's personalDurationT if it set or the global durationT otherwise.
+   * @param _member The member address to return durationT for
+   * @return The evaluated durationT value
+   */
+  function getMemberDurationT(address _member) public view returns (uint256) {
+    return getLoadedMemberDurationT(members[_member]);
+  }
+
+  function getLoadedMemberEndT(Member memory _member) internal view returns (uint256) {
+    return startT.add(getLoadedMemberDurationT(_member));
+  }
+
+  function getLoadedMemberDurationT(Member memory _member) internal view returns (uint256) {
+    uint256 _personalDurationT = uint256(_member.personalDurationT);
+    if (_personalDurationT == 0) {
+      return durationT;
+    }
+
+    return _personalDurationT;
   }
 
   /**
@@ -302,12 +361,12 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @return The available amount for a claim in the current block
    */
   function getAvailableTokensForMember(address _member) external view returns (uint256) {
-    Member storage member = members[_member];
+    Member memory member = members[_member];
     if (member.active == false) {
       return 0;
     }
 
-    return getAvailableTokens(member.alreadyClaimedTokens);
+    return getAvailableTokens(member.alreadyClaimedTokens, getLoadedMemberDurationT(member));
   }
 
   /**
@@ -322,7 +381,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
       return 0;
     }
 
-    return getAvailableVotes(member.alreadyClaimedVotes);
+    return getAvailableVotes({ _alreadyClaimed: member.alreadyClaimedVotes, _memberEndT: getLoadedMemberEndT(member) });
   }
 
   /**
@@ -330,10 +389,11 @@ contract PPTimedVesting is CvpInterface, Ownable {
    *         and an already claimed amount input
    * @dev Will return amountPerMember for non-members, so an external check is required for this case
    * @param _alreadyClaimed amount
+   * @param _durationT in seconds
    * @return The available amount for claim
    */
-  function getAvailableTokens(uint256 _alreadyClaimed) public view returns (uint256) {
-    return getAvailable(block.timestamp, startT, amountPerMember, durationT, _alreadyClaimed);
+  function getAvailableTokens(uint256 _alreadyClaimed, uint256 _durationT) public view returns (uint256) {
+    return getAvailable(block.timestamp, startT, amountPerMember, _durationT, _alreadyClaimed);
   }
 
   /**
@@ -341,10 +401,11 @@ contract PPTimedVesting is CvpInterface, Ownable {
    *         and an already claimed amount input
    * @dev Will return amountPerMember for non-members, so an external check is required for this case
    * @param _alreadyClaimed amount
+   * @param _memberEndT either the global or a personal endT timestamp
    * @return The available amount for claim
    */
-  function getAvailableVotes(uint256 _alreadyClaimed) public view returns (uint256) {
-    if (block.timestamp > endT) {
+  function getAvailableVotes(uint256 _alreadyClaimed, uint256 _memberEndT) public view returns (uint256) {
+    if (block.timestamp > _memberEndT) {
       return 0;
     }
     return getAvailable(block.timestamp, startV, amountPerMember, durationV, _alreadyClaimed);
@@ -387,7 +448,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
   function increaseDurationT(uint256 _newDurationT) external onlyOwner {
     require(_newDurationT > durationT, "Vesting::increaseDurationT: Too small duration");
-    require((_newDurationT - durationT) < 180 days, "Vesting::increaseDurationT: Too big duration");
+    require((_newDurationT - durationT) <= 180 days, "Vesting::increaseDurationT: Too big duration");
 
     uint256 prevDurationT = durationT;
     uint256 prevEndT = endT;
@@ -399,7 +460,85 @@ contract PPTimedVesting is CvpInterface, Ownable {
     emit IncreaseDurationT(prevDurationT, prevEndT, _newDurationT, newEndT);
   }
 
+  function increasePersonalDurationsT(address[] calldata _members, uint256[] calldata _newPersonalDurationsT)
+    external
+    onlyOwner
+  {
+    uint256 len = _members.length;
+    require(_newPersonalDurationsT.length == len, "LENGTH_MISMATCH");
+
+    for (uint256 i = 0; i < len; i++) {
+      _increasePersonalDurationT(_members[i], _newPersonalDurationsT[i]);
+    }
+  }
+
+  function _increasePersonalDurationT(address _member, uint256 _newPersonalDurationT) internal {
+    Member memory member = members[_member];
+    uint256 prevPersonalDurationT = getLoadedMemberDurationT(member);
+
+    require(_newPersonalDurationT > prevPersonalDurationT, "Vesting::increasePersonalDurationT: Too small duration");
+    require(
+      (_newPersonalDurationT - prevPersonalDurationT) <= 180 days,
+      "Vesting::increasePersonalDurationT: Too big duration"
+    );
+
+    uint256 prevPersonalEndT = startT.add(prevPersonalDurationT);
+
+    members[_member].personalDurationT = _newPersonalDurationT.toUint32();
+
+    uint256 newPersonalEndT = startT.add(_newPersonalDurationT);
+    emit IncreasePersonalDurationT(
+      _member,
+      prevPersonalDurationT,
+      prevPersonalEndT,
+      member.personalDurationT,
+      _newPersonalDurationT,
+      newPersonalEndT
+    );
+  }
+
+  function disableMember(address _member) external onlyOwner {
+    _disableMember(_member);
+  }
+
+  function _disableMember(address _member) internal {
+    Member memory from = members[_member];
+
+    require(from.active == true, "Vesting::_disableMember: The member is inactive");
+
+    members[_member].active = false;
+
+    address currentDelegate = voteDelegations[_member];
+
+    uint32 nCheckpoints = numCheckpoints[_member];
+    if (nCheckpoints != 0 && currentDelegate != address(0) && currentDelegate != _member) {
+      uint96 adjustedVotes =
+        sub96(from.alreadyClaimedVotes, from.alreadyClaimedTokens, "Vesting::_disableMember: AdjustedVotes underflow");
+
+      if (adjustedVotes > 0) {
+        _subDelegatedVotesCache(currentDelegate, adjustedVotes);
+      }
+    }
+
+    delete voteDelegations[_member];
+
+    uint256 tokensRemainder =
+      sub96(amountPerMember, from.alreadyClaimedTokens, "Vesting::_disableMember: BalanceRemainder overflow");
+    IERC20(token).transfer(address(1), uint256(tokensRemainder));
+
+    emit DisableMember(_member, tokensRemainder);
+  }
+
   /*** Member Methods ***/
+
+  /**
+   * @notice An active member can renounce his membership once.
+   * @dev This action is irreversible. The disabled member can't be enabled again.
+   *      Disables all the member's vote checkpoints. Transfers all the member's unclaimed tokens to the address(1).
+   */
+  function renounceMembership() external {
+    _disableMember(msg.sender);
+  }
 
   /**
    * @notice An active member claims a distributed amount of votes
@@ -410,9 +549,10 @@ contract PPTimedVesting is CvpInterface, Ownable {
     Member memory member = members[_to];
     require(member.active == true, "Vesting::claimVotes: User not active");
 
-    uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
+    uint256 endT_ = getLoadedMemberEndT(member);
+    uint256 votes = getAvailableVotes({ _alreadyClaimed: member.alreadyClaimedVotes, _memberEndT: endT_ });
 
-    require(block.timestamp <= endT, "Vesting::claimVotes: Vote vesting has ended");
+    require(block.timestamp <= endT_, "Vesting::claimVotes: Vote vesting has ended");
     require(votes > 0, "Vesting::claimVotes: Nothing to claim");
 
     _claimVotes(_to, member, votes);
@@ -491,7 +631,8 @@ contract PPTimedVesting is CvpInterface, Ownable {
     Member memory member = members[msg.sender];
     require(member.active == true, "Vesting::claimTokens: User not active");
 
-    uint256 bigAmount = getAvailableTokens(member.alreadyClaimedTokens);
+    uint256 durationT_ = getLoadedMemberDurationT(member);
+    uint256 bigAmount = getAvailableTokens(member.alreadyClaimedTokens, durationT_);
     require(bigAmount > 0, "Vesting::claimTokens: Nothing to claim");
     uint96 amount = safe96(bigAmount, "Vesting::claimTokens: Amount overflow");
 
@@ -500,10 +641,13 @@ contract PPTimedVesting is CvpInterface, Ownable {
       add96(member.alreadyClaimedTokens, amount, "Vesting::claimTokens: NewAlreadyClaimed overflow");
     members[msg.sender].alreadyClaimedTokens = newAlreadyClaimed;
 
-    uint256 votes = getAvailableVotes(member.alreadyClaimedVotes);
+    uint256 endT_ = startT.add(durationT_);
+    uint256 votes = getAvailableVotes({ _alreadyClaimed: member.alreadyClaimedVotes, _memberEndT: endT_ });
 
-    if (block.timestamp <= endT) {
+    if (block.timestamp <= endT_) {
       _claimVotes(msg.sender, member, votes);
+    } else if (block.timestamp <= endT) {
+      _claimVotes(msg.sender, member, sub96(amountPerMember, member.alreadyClaimedVotes, "CLAIM_ALL_VOTES_OVERFLOW"));
     }
 
     emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
@@ -544,17 +688,25 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     uint96 alreadyClaimedTokens = from.alreadyClaimedTokens;
     uint96 alreadyClaimedVotes = from.alreadyClaimedVotes;
+    uint32 personalDurationT = from.personalDurationT;
 
     require(from.active == true, "Vesting::transfer: From member is inactive");
     require(to.active == false, "Vesting::transfer: To address is already active");
     require(to.transferred == false, "Vesting::transfer: To address has been already used");
 
-    members[msg.sender] = Member({ active: false, transferred: true, alreadyClaimedVotes: 0, alreadyClaimedTokens: 0 });
+    members[msg.sender] = Member({
+      active: false,
+      transferred: true,
+      alreadyClaimedVotes: 0,
+      alreadyClaimedTokens: 0,
+      personalDurationT: 0
+    });
     members[_to] = Member({
       active: true,
       transferred: false,
       alreadyClaimedVotes: alreadyClaimedVotes,
-      alreadyClaimedTokens: alreadyClaimedTokens
+      alreadyClaimedTokens: alreadyClaimedTokens,
+      personalDurationT: personalDurationT
     });
 
     address currentDelegate = voteDelegations[msg.sender];
@@ -579,7 +731,9 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     emit Transfer(msg.sender, _to, alreadyClaimedVotes, alreadyClaimedTokens, currentDelegate);
 
-    uint256 votes = getAvailableVotes(toMember.alreadyClaimedVotes);
+    uint256 votes =
+      getAvailableVotes({ _alreadyClaimed: toMember.alreadyClaimedVotes, _memberEndT: getLoadedMemberEndT(toMember) });
+
     _claimVotes(_to, toMember, votes);
   }
 
