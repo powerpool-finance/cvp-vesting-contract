@@ -18,6 +18,7 @@ More details in 👉:
 ## Contracts on Ethereum Main Network
 
 ## Active
+- `PPVesting ` - [0x60842A6B44cca5Eb7685D1135acF69b1336B28b3](https://etherscan.io/address/0x60842A6B44cca5Eb7685D1135acF69b1336B28b3)
 
 ## Deprecated
 - `PPVesting ` - [0xFD28bE82e453860F41c36029175377F470aF754b](https://etherscan.io/address/0xFD28bE82e453860F41c36029175377F470aF754b)
