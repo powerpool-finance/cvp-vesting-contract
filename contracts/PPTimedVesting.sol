@@ -399,13 +399,14 @@ contract PPTimedVesting is CvpInterface, Ownable {
   /**
    * @notice Returns available vote amount for claim based on the current contract values
    *         and an already claimed amount input
-   * @dev Will return amountPerMember for non-members, so an external check is required for this case
+   * @dev Will return amountPerMember for non-members, so an external check is required for this case.
+   *      Will return 0 if global vesting is over.
    * @param _alreadyClaimed amount
    * @param _memberEndT either the global or a personal endT timestamp
    * @return The available amount for claim
    */
   function getAvailableVotes(uint256 _alreadyClaimed, uint256 _memberEndT) public view returns (uint256) {
-    if (block.timestamp > _memberEndT) {
+    if (block.timestamp > _memberEndT || block.timestamp > endT) {
       return 0;
     }
     return getAvailable(block.timestamp, startV, amountPerMember, durationV, _alreadyClaimed);
@@ -446,7 +447,13 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
   /*** Owner Methods ***/
 
+  /**
+   * @notice Increase global duration of vesting.
+   *         Owner must find all personal durations lower than global duration and increase before call this function.
+   * @param _newDurationT New global vesting duration
+   */
   function increaseDurationT(uint256 _newDurationT) external onlyOwner {
+    require(block.timestamp < endT, "Vesting::increaseDurationT: Vesting is over");
     require(_newDurationT > durationT, "Vesting::increaseDurationT: Too small duration");
     require((_newDurationT - durationT) <= 180 days, "Vesting::increaseDurationT: Too big duration");
 
@@ -460,6 +467,12 @@ contract PPTimedVesting is CvpInterface, Ownable {
     emit IncreaseDurationT(prevDurationT, prevEndT, _newDurationT, newEndT);
   }
 
+  /**
+   * @notice Increase personal duration of vesting.
+   *         Personal vesting duration must be always greater than global duration.
+   * @param _members Members list for increase duration
+   * @param _newPersonalDurationsT New personal vesting duration
+   */
   function increasePersonalDurationsT(address[] calldata _members, uint256[] calldata _newPersonalDurationsT)
     external
     onlyOwner
@@ -481,6 +494,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
       (_newPersonalDurationT - prevPersonalDurationT) <= 180 days,
       "Vesting::increasePersonalDurationT: Too big duration"
     );
+    require(_newPersonalDurationT >= durationT, "Vesting::increasePersonalDurationT: Less than durationT");
 
     uint256 prevPersonalEndT = startT.add(prevPersonalDurationT);
 

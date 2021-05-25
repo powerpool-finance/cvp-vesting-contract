@@ -442,6 +442,16 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       );
     });
 
+    it('should deny increasing duration lower than global', async function () {
+      await vesting.increasePersonalDurationsT([member1], [time.duration.days(100)], { from: owner });
+
+      await vesting.increaseDurationT(time.duration.days(120), { from: owner });
+
+      await expect(vesting.increasePersonalDurationsT([member1], [time.duration.days(110)], { from: owner })).to.be.revertedWith(
+        'Vesting::increasePersonalDurationT: Less than durationT',
+      );
+    });
+
     it('should deny increasing duration by less than the current personal', async function () {
       const firstDuration = time.duration.days(100);
       const invalidSecondDuration1 = time.duration.days(100);
