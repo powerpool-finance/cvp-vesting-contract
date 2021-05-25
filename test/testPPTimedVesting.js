@@ -63,6 +63,30 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     );
   });
 
+  async function hasTokenVestingStarted() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const startTime = await vesting.startT().then(r => parseInt(r));
+    return curTime >= startTime;
+  }
+
+  async function hasTokenVestingEnded() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const startTime = await vesting.endT().then(r => parseInt(r));
+    return curTime >= startTime;
+  }
+
+  async function hasVoteVestingStarted() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const startTime = await vesting.startV().then(r => parseInt(r));
+    return curTime >= startTime;
+  }
+
+  async function hasVoteVestingEnded() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const endTime = await vesting.endV().then(r => parseInt(r));
+    return curTime >= endTime;
+  }
+
   describe('initialization', () => {
     it('should assign correct values during initialization', async function () {
       expect(await vesting.token()).to.equal(erc20.address);
@@ -570,29 +594,29 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
   describe('getAvailableTokens', () => {
     it('should return correct values before the start', async function () {
-      expect(await vesting.hasTokenVestingStarted()).to.be.false;
+      expect(await hasTokenVestingStarted()).to.be.false;
       expect(await vesting.getAvailableTokens(0, durationT)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokens(5000, durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on 0th second', async function () {
       await evmMine(startT);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokens(0, durationT)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokens(5000, durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the first second after the start', async function () {
       await evmMine(startT + 1);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokens(0, durationT)).to.be.equal(ether(250));
       expect(await vesting.getAvailableTokens(ether(250), durationT)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the pre-last second', async function () {
       await evmMine(startT + parseInt(durationT) - 1);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
-      expect(await vesting.hasTokenVestingEnded()).to.be.false;
+      expect(await hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingEnded()).to.be.false;
       expect(await vesting.getAvailableTokens(ether(0), durationT)).to.be.equal(ether(4750));
       expect(await vesting.getAvailableTokens(ether(4000), durationT)).to.be.equal(ether(750));
       expect(await vesting.getAvailableTokens(ether(4750), durationT)).to.be.equal(ether(0));
@@ -600,8 +624,8 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should return correct values on the last second', async function () {
       await evmMine(startT + parseInt(durationT));
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
-      expect(await vesting.hasTokenVestingEnded()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingEnded()).to.be.true;
       expect(await vesting.getAvailableTokens(ether(0), durationT)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokens(ether(4500), durationT)).to.be.equal(ether(500));
       expect(await vesting.getAvailableTokens(ether(5000), durationT)).to.be.equal(ether(0));
@@ -609,8 +633,8 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should return correct values after the last second', async function () {
       await evmMine(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
-      expect(await vesting.hasTokenVestingEnded()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingEnded()).to.be.true;
       expect(await vesting.getAvailableTokens(ether(0), durationT)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokens(ether(4500), durationT)).to.be.equal(ether(500));
       expect(await vesting.getAvailableTokens(ether(5000), durationT)).to.be.equal(ether(0));
@@ -619,7 +643,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
   describe('getAvailableTokensForMember', () => {
     it('should return correct values before the start', async function () {
-      expect(await vesting.hasTokenVestingStarted()).to.be.false;
+      expect(await hasTokenVestingStarted()).to.be.false;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokensForMember(member2)).to.be.equal(ether(0));
       expect(await vesting.getAvailableTokensForMember(member3)).to.be.equal(ether(0));
@@ -628,14 +652,14 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should return correct values on the first second after the start', async function () {
       await evmMine(startT + 1);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(250));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values on the last second', async function () {
       await evmMine(startT + parseInt(durationT));
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
@@ -643,14 +667,14 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     it('should calculate for global last second for a member with a custom endT', async function () {
       await vesting.increasePersonalDurationsT([member1], [durationT * 2]);
       await evmMine(startT + parseInt(durationT));
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(2500));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
 
     it('should return correct values after the last second', async function () {
       await evmMine(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       expect(await vesting.getAvailableTokensForMember(member1)).to.be.equal(ether(5000));
       expect(await vesting.getAvailableTokensForMember(member4)).to.be.equal(ether(0));
     });
@@ -659,7 +683,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
   describe('getAvailableTokensForMemberAt', () => {
     it('should return correct values before the start', async function () {
       await evmMine(startT);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
 
       let current = (await time.latest()).toNumber();
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member1)).to.be.equal(ether(250));
@@ -670,7 +694,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should return correct values on the last block', async function () {
       await evmMine(startT + parseInt(durationT));
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
 
       let current = (await time.latest()).toNumber();
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member1)).to.be.equal(ether(5000));
@@ -681,7 +705,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should return correct values after the last block', async function () {
       await evmMine(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
 
       let current = (await time.latest()).toNumber();
       expect(await vesting.getAvailableTokensForMemberAt(current + 1, member1)).to.be.equal(ether(5000));
@@ -692,7 +716,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should return correct values for a member with a personal durationT', async function () {
       await evmMine(startT + parseInt(durationT) + 5);
-      expect(await vesting.hasTokenVestingStarted()).to.be.true;
+      expect(await hasTokenVestingStarted()).to.be.true;
       await vesting.increasePersonalDurationsT([member2], [durationT * 2]);
 
       let current = (await time.latest()).toNumber();
@@ -711,7 +735,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     beforeEach(async function () {});
 
     it('should deny claiming before the vesting period start', async function () {
-      expect(await vesting.hasVoteVestingStarted()).to.be.false;
+      expect(await hasVoteVestingStarted()).to.be.false;
       await expect(vesting.claimVotes(member1)).to.be.revertedWith(' Vesting::claimVotes: Nothing to claim');
     });
 
@@ -810,7 +834,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
       it('should decrement an empty non-owned votes on increase', async function () {
         expect(await vesting.voteDelegations(member1)).to.be.equal(constants.ZERO_ADDRESS);
-        expect(await vesting.hasVoteVestingEnded()).to.be.equal(false);
+        expect(await hasVoteVestingEnded()).to.be.equal(false);
         expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(3000));
         expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(ether(250));
         const res = await vesting.claimTokens(member1, { from: member1 });
@@ -836,7 +860,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
         expect((await vesting.members(member1)).alreadyClaimedTokens).to.be.equal(ether(1250));
 
         await time.increase(1);
-        expect(await vesting.hasVoteVestingEnded()).to.be.true;
+        expect(await hasVoteVestingEnded()).to.be.true;
         // 5000 - 1250
         expect(await vesting.getLastCachedVotes(member1)).to.be.equal(ether(3750));
         expect(await vesting.getPriorVotes(member1, parseInt(claimedAt) - 1)).to.be.equal(ether(2750));
@@ -881,7 +905,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should deny withdrawing before the vesting period start', async function () {
-      expect(await vesting.hasTokenVestingStarted()).to.be.false;
+      expect(await hasTokenVestingStarted()).to.be.false;
       await expect(vesting.claimTokens(bob, { from: member1 })).to.be.revertedWith(
         'Vesting::claimTokens: Nothing to claim',
       );
@@ -1043,7 +1067,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await vesting.transfer(bob, { from: member1 });
       await evmMine(endT + 5);
       await time.advanceBlock();
-      expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
+      expect(await hasVoteVestingEnded()).to.be.equal(true);
 
       const member1Details = await vesting.members(member1);
       expect(member1Details.active).to.be.false;
@@ -1099,7 +1123,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
-      expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
+      expect(await hasVoteVestingEnded()).to.be.equal(true);
       // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 4250
       expect(await vesting.getLastCachedVotes(bob)).to.be.equal(ether(4250));
       expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(4250));
@@ -1147,7 +1171,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(0));
       expect(await vesting.getPriorVotes(member1, transferredAt)).to.be.equal(ether(0));
-      expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
+      expect(await hasVoteVestingEnded()).to.be.equal(true);
       // 3250 + (2 advanceBlocks + 1 transfer + 1 txItself) * 250 = 3250 + 4 * 250 = 4250
       expect(await vesting.getLastCachedVotes(bob)).to.be.equal(ether(4250));
       expect(await vesting.getPriorVotes(bob, transferredAt)).to.be.equal(ether(4250));
@@ -1215,7 +1239,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.getPriorVotes(member1, delegatedBackAt)).to.be.equal(ether(0));
       expect(await vesting.getLastCachedVotes(member1)).to.be.equal(ether(0));
 
-      expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
+      expect(await hasVoteVestingEnded()).to.be.equal(true);
       // and 750 tokens was claimed earlier
       expect(await vesting.getLastCachedVotes(bob)).to.be.equal(ether(4250));
       expect(await vesting.getPriorVotes(bob, delegatedBackAt)).to.be.equal(ether(4250));

@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/utils/SafeCast.sol";
 interface IERC20 {
   function totalSupply() external view returns (uint256);
 
-  function transfer(address _to, uint256 _amount) external;
+  function transfer(address _to, uint256 _amount) external returns (bool);
 }
 
 interface CvpInterface {
@@ -184,38 +184,6 @@ contract PPTimedVesting is CvpInterface, Ownable {
     }
 
     emit Init(_memberList);
-  }
-
-  /**
-   * @notice Checks whether the vote vesting period has started or not
-   * @return true If the vote vesting period has started
-   */
-  function hasVoteVestingStarted() external view returns (bool) {
-    return block.timestamp >= startV;
-  }
-
-  /**
-   * @notice Checks whether the vote vesting period has ended or not
-   * @return true If the vote vesting period has ended
-   */
-  function hasVoteVestingEnded() external view returns (bool) {
-    return block.timestamp >= endV;
-  }
-
-  /**
-   * @notice Checks whether the token vesting period has started or not
-   * @return true If the token vesting period has started
-   */
-  function hasTokenVestingStarted() external view returns (bool) {
-    return block.timestamp >= startT;
-  }
-
-  /**
-   * @notice Checks whether the token vesting period has ended or not
-   * @return true If the token vesting period has ended
-   */
-  function hasTokenVestingEnded() external view returns (bool) {
-    return block.timestamp >= endT;
   }
 
   /**
@@ -538,7 +506,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     uint256 tokensRemainder =
       sub96(amountPerMember, from.alreadyClaimedTokens, "Vesting::_disableMember: BalanceRemainder overflow");
-    IERC20(token).transfer(address(1), uint256(tokensRemainder));
+    require(IERC20(token).transfer(address(1), uint256(tokensRemainder)), "ERC20::transfer: failed");
 
     emit DisableMember(_member, tokensRemainder);
   }
@@ -666,7 +634,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
 
-    IERC20(token).transfer(_to, bigAmount);
+    require(IERC20(token).transfer(_to, bigAmount), "ERC20::transfer: failed");
   }
 
   /**

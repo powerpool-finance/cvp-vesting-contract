@@ -32,6 +32,24 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
     await erc20.mint(vault, ether(150000000000));
   });
 
+  async function hasTokenVestingEnded() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const startTime = await vesting.endT().then(r => parseInt(r));
+    return curTime >= startTime;
+  }
+
+  async function hasVoteVestingStarted() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const startTime = await vesting.startV().then(r => parseInt(r));
+    return curTime >= startTime;
+  }
+
+  async function hasVoteVestingEnded() {
+    const curTime = await time.latest().then(r => parseInt(r));
+    const endTime = await vesting.endV().then(r => parseInt(r));
+    return curTime >= endTime;
+  }
+
   describe('claimTokens', () => {
     it('should allow a gradual token/votes claims each second', async function () {
       // Setup...
@@ -62,7 +80,7 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
 
       // Step #1
       await evmMine(startV);
-      expect(await vesting.hasVoteVestingStarted()).to.be.true;
+      expect(await hasVoteVestingStarted()).to.be.true;
 
       let res = await vesting.claimVotes(member1);
       const block1 = res.receipt.blockNumber;
@@ -576,8 +594,8 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         expect(await erc20.balanceOf(member1)).to.be.equal(amountPerMember);
 
         // Vote cache checks
-        expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
-        expect(await vesting.hasTokenVestingEnded()).to.be.equal(false);
+        expect(await hasVoteVestingEnded()).to.be.equal(true);
+        expect(await hasTokenVestingEnded()).to.be.equal(false);
 
         expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
         expect(await vesting.getPriorVotes(member2, block2)).to.be.equal((VMB(7) - TMB(1)).toString());
@@ -646,9 +664,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
 
       // Step #1. Member #1 claimV #1
       await evmSetNextBlockTimestamp(startV + days(1));
-      expect(await vesting.hasVoteVestingStarted()).to.be.false;
+      expect(await hasVoteVestingStarted()).to.be.false;
       await evmMine();
-      expect(await vesting.hasVoteVestingStarted()).to.be.true;
+      expect(await hasVoteVestingStarted()).to.be.true;
 
       await evmSetNextBlockTimestamp(startV + months(1));
       await vesting.claimVotes(member1);
@@ -856,8 +874,8 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       // Step #13. Member #1 claimV #7 claimT #3
       await evmSetNextBlockTimestamp(startV + months(24));
       await vesting.claimTokens(member1, { from: member1 });
-      expect(await vesting.hasVoteVestingEnded()).to.be.equal(true);
-      expect(await vesting.hasTokenVestingEnded()).to.be.equal(true);
+      expect(await hasVoteVestingEnded()).to.be.equal(true);
+      expect(await hasTokenVestingEnded()).to.be.equal(true);
       const block13 = await getLatestBlockNumber();
       expect(await getLatestBlockTimestamp()).to.be.equal(startV + months(24));
 
