@@ -452,6 +452,15 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       );
     });
 
+    it('should deny increasing duration after vesting end', async function () {
+      await time.increaseTo(endT);
+      await time.advanceBlock();
+
+      await expect(vesting.increaseDurationT(time.duration.days(120), { from: owner })).to.be.revertedWith(
+        'Vesting::increaseDurationT: Vesting is over',
+      );
+    });
+
     it('should deny increasing duration by less than the current personal', async function () {
       const firstDuration = time.duration.days(100);
       const invalidSecondDuration1 = time.duration.days(100);
