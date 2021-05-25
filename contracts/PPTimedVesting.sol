@@ -252,7 +252,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @param blockNumber The block number to get the vote balance at
    * @return The number of votes the account had as of the given block
    */
-  function getPriorVotes(address account, uint256 blockNumber) public view override returns (uint96) {
+  function getPriorVotes(address account, uint256 blockNumber) external view override returns (uint96) {
     require(blockNumber < block.number, "Vesting::getPriorVotes: Not yet determined");
 
     uint32 nCheckpoints = numCheckpoints[account];
@@ -327,7 +327,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @param _member The member address to return endT for
    * @return The evaluated endT value
    */
-  function getMemberEndT(address _member) public view returns (uint256) {
+  function getMemberEndT(address _member) external view returns (uint256) {
     return startT.add(getMemberDurationT(_member));
   }
 
