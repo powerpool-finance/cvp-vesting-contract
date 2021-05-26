@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/utils/SafeCast.sol";
 interface IERC20 {
   function totalSupply() external view returns (uint256);
 
-  function transfer(address _to, uint256 _amount) external;
+  function transfer(address _to, uint256 _amount) external returns (bool);
 }
 
 interface CvpInterface {
@@ -538,7 +538,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     uint256 tokensRemainder =
       sub96(amountPerMember, from.alreadyClaimedTokens, "Vesting::_disableMember: BalanceRemainder overflow");
-    IERC20(token).transfer(address(1), uint256(tokensRemainder));
+    require(IERC20(token).transfer(address(1), uint256(tokensRemainder)), "ERC20::transfer: failed");
 
     emit DisableMember(_member, tokensRemainder);
   }
@@ -664,7 +664,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
 
-    IERC20(token).transfer(_to, bigAmount);
+    require(IERC20(token).transfer(_to, bigAmount), "ERC20::transfer: failed");
   }
 
   /**
