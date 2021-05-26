@@ -265,7 +265,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
     }
 
     // (No one can use vesting votes left on the contract after endT, even for votings created before endT)
-    if (block.timestamp > getLoadedMemberEndT(member)) {
+    if (block.timestamp > getLoadedMemberEndT(member) || block.timestamp > endT) {
       return 0;
     }
 

@@ -454,7 +454,6 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       // Step #3. IncreasePersonalDurationT
       await vesting.increasePersonalDurationsT([member1], [months(20)]);
       const TMS2 = buildMS(months(20));
-      const TMB2 = buildMB(months(20));
 
       // Step #4. Member #1 claimV #2
       await evmSetNextBlockTimestamp(startV + months(8));
@@ -481,10 +480,10 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
       expect(await erc20.balanceOf(member1)).to.be.equal(amountPerMember);
 
       // Vote cache checks
-      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal((VMB(7) - TMB(1)).toString());
+      expect(await vesting.getPriorVotes(member1, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member1, block2)).to.be.equal('0');
-      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal((VMB(7) - TMB(1)).toString());
-      expect(await vesting.getPriorVotes(member1, block4)).to.be.equal((VMB(9) - TMB2(3)).toString());
+      expect(await vesting.getPriorVotes(member1, block3)).to.be.equal('0');
+      expect(await vesting.getPriorVotes(member1, block4)).to.be.equal('0');
 
       expect(await vesting.getPriorVotes(member2, block1)).to.be.equal('0');
       expect(await vesting.getPriorVotes(member2, block2)).to.be.equal('0');
