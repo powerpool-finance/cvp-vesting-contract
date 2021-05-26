@@ -675,6 +675,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
     require(from.active == true, "Vesting::transfer: From member is inactive");
     require(to.active == false, "Vesting::transfer: To address is already active");
     require(to.transferred == false, "Vesting::transfer: To address has been already used");
+    require(numCheckpoints[_to] == 0, "Vesting::transfer: To address already had a checkpoint");
 
     members[msg.sender] = Member({
       active: false,
