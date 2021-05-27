@@ -50,9 +50,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(30000), { from: vault });
       // Step #0
@@ -196,9 +196,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
 
@@ -238,9 +238,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
 
@@ -298,9 +298,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
 
@@ -372,9 +372,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
 
@@ -432,9 +432,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(5 * 1000 * 1000), { from: vault });
 
@@ -514,9 +514,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
           durationV,
           startT,
           durationT,
-          [member1, member2, member3],
           amountPerMember,
         );
+        await vesting.initializeMembers([member1, member2, member3]);
 
         await erc20.transfer(vesting.address, ether(3 * 5 * 1000 * 1000), { from: vault });
 
@@ -646,9 +646,9 @@ contract('PPTimedVesting Behaviour Tests', function ([, member1, member2, member
         durationV,
         startT,
         durationT,
-        [member1, member2, member3],
         amountPerMember,
       );
+      await vesting.initializeMembers([member1, member2, member3]);
 
       await erc20.transfer(vesting.address, ether(3 * 5 * 1000 * 1000), { from: vault });
 

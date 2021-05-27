@@ -111,7 +111,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
   uint256 public immutable startT;
 
   /// @notice Number of the vesting contract members, used only from UI
-  uint256 public immutable memberCount;
+  uint256 public memberCount;
 
   /// @notice Amount of ERC20 tokens to distribute during the vesting period
   uint96 public immutable amountPerMember;
@@ -142,7 +142,6 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @param _durationV The duration in second the vote vesting period should last
    * @param _startT The timestamp when the token vesting period starts
    * @param _durationT The duration in seconds the token vesting period should last
-   * @param _memberList The list of addresses to distribute tokens to
    * @param _amountPerMember The number of tokens to distribute to each vesting contract member
    */
   constructor(
@@ -151,7 +150,6 @@ contract PPTimedVesting is CvpInterface, Ownable {
     uint256 _durationV,
     uint256 _startT,
     uint256 _durationT,
-    address[] memory _memberList,
     uint96 _amountPerMember
   ) public {
     require(_durationV > 1, "Vesting: Invalid durationV");
@@ -173,6 +171,14 @@ contract PPTimedVesting is CvpInterface, Ownable {
     endT = _startT + _durationT;
 
     amountPerMember = _amountPerMember;
+  }
+
+  /**
+   * @notice Initialize members of vesting
+   * @param _memberList The list of addresses to distribute tokens to
+   */
+  function initializeMembers(address[] calldata _memberList) external onlyOwner {
+    require(memberCount == 0, "Vesting: Already initialized");
 
     uint256 len = _memberList.length;
     require(len > 0, "Vesting: Empty member list");
