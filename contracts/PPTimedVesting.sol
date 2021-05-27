@@ -259,8 +259,8 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     Member memory member = members[account];
 
-    // Not a member
-    if (member.active == false) {
+    // Transferred member
+    if (member.transferred == true) {
       return 0;
     }
 

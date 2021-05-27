@@ -728,6 +728,29 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       await expect(vesting.claimVotes(member1)).to.be.revertedWith('Vesting::claimVotes: Nothing to claim');
     });
 
+    it('should allow delegate to non-member', async function () {
+      await evmMine(startT + 2);
+
+      let res = await vesting.claimVotes(member1);
+      await vesting.delegateVotes(bob, { from: member1 });
+      let claimedAt = res.receipt.blockNumber;
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(bob);
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(4000));
+
+      await evmMine(startT + 12);
+
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(4000));
+      res = await vesting.claimVotes(member1);
+      claimedAt = res.receipt.blockNumber;
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(5000));
+
+      await time.increase(1);
+
+      expect(await vesting.getPriorVotes(bob, parseInt(claimedAt) - 1)).to.be.equal(ether(4000));
+      expect(await vesting.getPriorVotes(bob, claimedAt)).to.be.equal(ether(5000));
+    });
+
     describe('increment with non-empty balance', () => {
       let firstClaimedAt;
       let secondClaimedAt;
