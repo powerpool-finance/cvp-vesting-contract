@@ -1,4 +1,5 @@
 require('@nomiclabs/hardhat-truffle5');
+require('@nomiclabs/hardhat-ethers');
 require('solidity-coverage');
 require('hardhat-contract-sizer');
 require('hardhat-gas-reporter');
@@ -42,9 +43,16 @@ const config = {
     },
     mainnet: {
       url: 'https://mainnet-eth.compound.finance',
-      gasPrice: 99 * 10 ** 9,
+      gasPrice: 25 * 10 ** 9,
       accounts: getAccounts('mainnet'),
-      gasMultiplier: 2,
+      gasMultiplier: 1.1,
+    },
+    mainnetfork: {
+      url: 'http://127.0.0.1:8545/',
+      gasPrice: 25 * 10 ** 9,
+      // accounts: getAccounts('mainnet'),
+      gasMultiplier: 1.1,
+      timeout: 2000000,
     },
     kovan: {
       url: 'https://kovan-eth.compound.finance',

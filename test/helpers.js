@@ -1,5 +1,6 @@
 const { ether: etherBN, time } = require('@openzeppelin/test-helpers');
 const assert = require('assert');
+const BigNumber = require('bignumber.js')
 
 const getCounter = (n => () => n++)(1);
 
@@ -14,6 +15,8 @@ module.exports = {
   getLatestBlockTimestamp,
   getLatestBlockNumber,
   ether,
+  fromEther,
+  impersonateAccount,
 };
 
 function buildEndpoint(endpoint) {
@@ -81,4 +84,17 @@ async function logLatestBlock(msg) {
 
 function ether(value) {
   return etherBN(String(value)).toString();
+}
+
+function fromEther(value) {
+  return web3.utils.fromWei(value, 'ether');
+}
+
+async function impersonateAccount(ethers, adminAddress) {
+  await ethers.provider.getSigner().sendTransaction({
+    to: adminAddress,
+    value: '0x' + new BigNumber(ether('1')).toString(16)
+  })
+
+  await ethers.provider.send('hardhat_impersonateAccount', [adminAddress]);
 }
