@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/utils/SafeCast.sol";
 interface IERC20 {
   function totalSupply() external view returns (uint256);
 
-  function transfer(address _to, uint256 _amount) external;
+  function transfer(address _to, uint256 _amount) external returns (bool);
 }
 
 interface CvpInterface {
@@ -111,7 +111,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
   uint256 public immutable startT;
 
   /// @notice Number of the vesting contract members, used only from UI
-  uint256 public immutable memberCount;
+  uint256 public memberCount;
 
   /// @notice Amount of ERC20 tokens to distribute during the vesting period
   uint96 public immutable amountPerMember;
@@ -142,7 +142,6 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @param _durationV The duration in second the vote vesting period should last
    * @param _startT The timestamp when the token vesting period starts
    * @param _durationT The duration in seconds the token vesting period should last
-   * @param _memberList The list of addresses to distribute tokens to
    * @param _amountPerMember The number of tokens to distribute to each vesting contract member
    */
   constructor(
@@ -151,7 +150,6 @@ contract PPTimedVesting is CvpInterface, Ownable {
     uint256 _durationV,
     uint256 _startT,
     uint256 _durationT,
-    address[] memory _memberList,
     uint96 _amountPerMember
   ) public {
     require(_durationV > 1, "Vesting: Invalid durationV");
@@ -173,6 +171,14 @@ contract PPTimedVesting is CvpInterface, Ownable {
     endT = _startT + _durationT;
 
     amountPerMember = _amountPerMember;
+  }
+
+  /**
+   * @notice Initialize members of vesting
+   * @param _memberList The list of addresses to distribute tokens to
+   */
+  function initializeMembers(address[] calldata _memberList) external onlyOwner {
+    require(memberCount == 0, "Vesting: Already initialized");
 
     uint256 len = _memberList.length;
     require(len > 0, "Vesting: Empty member list");
@@ -252,20 +258,20 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @param blockNumber The block number to get the vote balance at
    * @return The number of votes the account had as of the given block
    */
-  function getPriorVotes(address account, uint256 blockNumber) public view override returns (uint96) {
+  function getPriorVotes(address account, uint256 blockNumber) external view override returns (uint96) {
     require(blockNumber < block.number, "Vesting::getPriorVotes: Not yet determined");
 
     uint32 nCheckpoints = numCheckpoints[account];
 
     Member memory member = members[account];
 
-    // Not a member
-    if (member.active == false) {
+    // Transferred member
+    if (member.transferred == true) {
       return 0;
     }
 
     // (No one can use vesting votes left on the contract after endT, even for votings created before endT)
-    if (block.timestamp > getLoadedMemberEndT(member)) {
+    if (block.timestamp > getLoadedMemberEndT(member) || block.timestamp > endT) {
       return 0;
     }
 
@@ -327,7 +333,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
    * @param _member The member address to return endT for
    * @return The evaluated endT value
    */
-  function getMemberEndT(address _member) public view returns (uint256) {
+  function getMemberEndT(address _member) external view returns (uint256) {
     return startT.add(getMemberDurationT(_member));
   }
 
@@ -399,13 +405,14 @@ contract PPTimedVesting is CvpInterface, Ownable {
   /**
    * @notice Returns available vote amount for claim based on the current contract values
    *         and an already claimed amount input
-   * @dev Will return amountPerMember for non-members, so an external check is required for this case
+   * @dev Will return amountPerMember for non-members, so an external check is required for this case.
+   *      Will return 0 if global vesting is over.
    * @param _alreadyClaimed amount
    * @param _memberEndT either the global or a personal endT timestamp
    * @return The available amount for claim
    */
   function getAvailableVotes(uint256 _alreadyClaimed, uint256 _memberEndT) public view returns (uint256) {
-    if (block.timestamp > _memberEndT) {
+    if (block.timestamp > _memberEndT || block.timestamp > endT) {
       return 0;
     }
     return getAvailable(block.timestamp, startV, amountPerMember, durationV, _alreadyClaimed);
@@ -446,7 +453,13 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
   /*** Owner Methods ***/
 
+  /**
+   * @notice Increase global duration of vesting.
+   *         Owner must find all personal durations lower than global duration and increase before call this function.
+   * @param _newDurationT New global vesting duration
+   */
   function increaseDurationT(uint256 _newDurationT) external onlyOwner {
+    require(block.timestamp < endT, "Vesting::increaseDurationT: Vesting is over");
     require(_newDurationT > durationT, "Vesting::increaseDurationT: Too small duration");
     require((_newDurationT - durationT) <= 180 days, "Vesting::increaseDurationT: Too big duration");
 
@@ -460,6 +473,12 @@ contract PPTimedVesting is CvpInterface, Ownable {
     emit IncreaseDurationT(prevDurationT, prevEndT, _newDurationT, newEndT);
   }
 
+  /**
+   * @notice Increase personal duration of vesting.
+   *         Personal vesting duration must be always greater than global duration.
+   * @param _members Members list for increase duration
+   * @param _newPersonalDurationsT New personal vesting duration
+   */
   function increasePersonalDurationsT(address[] calldata _members, uint256[] calldata _newPersonalDurationsT)
     external
     onlyOwner
@@ -481,6 +500,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
       (_newPersonalDurationT - prevPersonalDurationT) <= 180 days,
       "Vesting::increasePersonalDurationT: Too big duration"
     );
+    require(_newPersonalDurationT >= durationT, "Vesting::increasePersonalDurationT: Less than durationT");
 
     uint256 prevPersonalEndT = startT.add(prevPersonalDurationT);
 
@@ -524,7 +544,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
 
     uint256 tokensRemainder =
       sub96(amountPerMember, from.alreadyClaimedTokens, "Vesting::_disableMember: BalanceRemainder overflow");
-    IERC20(token).transfer(address(1), uint256(tokensRemainder));
+    require(IERC20(token).transfer(address(1), uint256(tokensRemainder)), "ERC20::transfer: failed");
 
     emit DisableMember(_member, tokensRemainder);
   }
@@ -644,15 +664,13 @@ contract PPTimedVesting is CvpInterface, Ownable {
     uint256 endT_ = startT.add(durationT_);
     uint256 votes = getAvailableVotes({ _alreadyClaimed: member.alreadyClaimedVotes, _memberEndT: endT_ });
 
-    if (block.timestamp <= endT_) {
+    if (block.timestamp <= endT) {
       _claimVotes(msg.sender, member, votes);
-    } else if (block.timestamp <= endT) {
-      _claimVotes(msg.sender, member, sub96(amountPerMember, member.alreadyClaimedVotes, "CLAIM_ALL_VOTES_OVERFLOW"));
     }
 
     emit ClaimTokens(msg.sender, _to, amount, newAlreadyClaimed, votes);
 
-    IERC20(token).transfer(_to, bigAmount);
+    require(IERC20(token).transfer(_to, bigAmount), "ERC20::transfer: failed");
   }
 
   /**
@@ -693,6 +711,7 @@ contract PPTimedVesting is CvpInterface, Ownable {
     require(from.active == true, "Vesting::transfer: From member is inactive");
     require(to.active == false, "Vesting::transfer: To address is already active");
     require(to.transferred == false, "Vesting::transfer: To address has been already used");
+    require(numCheckpoints[_to] == 0, "Vesting::transfer: To address already had a checkpoint");
 
     members[msg.sender] = Member({
       active: false,

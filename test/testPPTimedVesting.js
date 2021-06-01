@@ -58,9 +58,9 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       durationV,
       startT,
       durationT,
-      [member1, member2, member3],
       amountPerMember,
     );
+    await vesting.initializeMembers([member1, member2, member3]);
   });
 
   describe('initialization', () => {
@@ -83,26 +83,33 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should deny initialization with zero vote vesting duration', async function () {
       await expect(
-        PPTimedVesting.new(erc20.address, startV, 0, startT, 2, [member1, member2, member3], amountPerMember),
+        PPTimedVesting.new(erc20.address, startV, 0, startT, 2, amountPerMember),
       ).to.be.revertedWith('Vesting: Invalid durationV');
     });
 
     it('should deny initialization with zero token vesting duration', async function () {
       await expect(
-        PPTimedVesting.new(erc20.address, startV, 2, startT, 0, [member1, member2, member3], amountPerMember),
+        PPTimedVesting.new(erc20.address, startV, 2, startT, 0, amountPerMember),
       ).to.be.revertedWith('Vesting: Invalid durationT');
     });
 
     it('should deny initialization with zero amountPerMember value', async function () {
       await expect(
-        PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, [member1, member2, member3], 0),
+        PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, 0),
       ).to.be.revertedWith('Vesting: Invalid amount per member');
     });
 
     it('should deny initialization with an empty member list', async function () {
+      const vesting = await PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, amountPerMember);
+      await expect(vesting.initializeMembers([])).to.be.revertedWith('Vesting: Empty member list');
+    });
+
+    it('should deny twice members initialization', async function () {
+      const vesting = await PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, amountPerMember);
+      await vesting.initializeMembers([member1, member2, member3]);
       await expect(
-        PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, [], amountPerMember),
-      ).to.be.revertedWith('Vesting: Empty member list');
+        vesting.initializeMembers([member1, member2, member3])
+      ).to.be.revertedWith('Vesting: Already initialized');
     });
 
     it('should deny initialization with non-erc20 contract address', async function () {
@@ -113,7 +120,6 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
           durationV,
           startT,
           durationT,
-          [member1, member2, member3],
           amountPerMember,
         ),
       ).to.be.revertedWith(
@@ -123,7 +129,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should deny initialization with non-erc20 address', async function () {
       await expect(
-        PPTimedVesting.new(bob, startV, durationV, startT, durationT, [member1, member2, member3], amountPerMember),
+        PPTimedVesting.new(bob, startV, durationV, startT, durationT, amountPerMember),
       ).to.be.revertedWith('Transaction reverted: function call to a non-contract account');
     });
   });
@@ -442,6 +448,25 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       );
     });
 
+    it('should deny increasing duration lower than global', async function () {
+      await vesting.increasePersonalDurationsT([member1], [time.duration.days(100)], { from: owner });
+
+      await vesting.increaseDurationT(time.duration.days(120), { from: owner });
+
+      await expect(vesting.increasePersonalDurationsT([member1], [time.duration.days(110)], { from: owner })).to.be.revertedWith(
+        'Vesting::increasePersonalDurationT: Less than durationT',
+      );
+    });
+
+    it('should deny increasing duration after vesting end', async function () {
+      await time.increaseTo(endT);
+      await time.advanceBlock();
+
+      await expect(vesting.increaseDurationT(time.duration.days(120), { from: owner })).to.be.revertedWith(
+        'Vesting::increaseDurationT: Vesting is over',
+      );
+    });
+
     it('should deny increasing duration by less than the current personal', async function () {
       const firstDuration = time.duration.days(100);
       const invalidSecondDuration1 = time.duration.days(100);
@@ -702,11 +727,35 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should deny claiming when nothing was assigned', async function () {
-      vesting = await PPTimedVesting.new(erc20.address, startV, 10, startT, 15, [member1, member2, member3], 5);
+      vesting = await PPTimedVesting.new(erc20.address, startV, 10, startT, 15, 5);
+      await vesting.initializeMembers([member1, member2, member3]);
       await erc20.mint(vesting.address, ether(3000));
       await evmMine(startT + 2);
       await vesting.claimVotes(member1);
       await expect(vesting.claimVotes(member1)).to.be.revertedWith('Vesting::claimVotes: Nothing to claim');
+    });
+
+    it('should allow delegate to non-member', async function () {
+      await evmMine(startT + 2);
+
+      let res = await vesting.claimVotes(member1);
+      await vesting.delegateVotes(bob, { from: member1 });
+      let claimedAt = res.receipt.blockNumber;
+
+      expect(await vesting.voteDelegations(member1)).to.be.equal(bob);
+      expect(await vesting.getPriorVotes(member1, claimedAt)).to.be.equal(ether(4000));
+
+      await evmMine(startT + 12);
+
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(4000));
+      res = await vesting.claimVotes(member1);
+      claimedAt = res.receipt.blockNumber;
+      expect((await vesting.members(member1)).alreadyClaimedVotes).to.be.equal(ether(5000));
+
+      await time.increase(1);
+
+      expect(await vesting.getPriorVotes(bob, parseInt(claimedAt) - 1)).to.be.equal(ether(4000));
+      expect(await vesting.getPriorVotes(bob, claimedAt)).to.be.equal(ether(5000));
     });
 
     describe('increment with non-empty balance', () => {
@@ -876,7 +925,8 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should deny claiming when nothing was assigned', async function () {
-      vesting = await PPTimedVesting.new(erc20.address, startV, 5, startT, 10, [member1, member2, member3], 5);
+      vesting = await PPTimedVesting.new(erc20.address, startV, 5, startT, 10, 5);
+      await vesting.initializeMembers([member1, member2, member3]);
       await erc20.mint(vesting.address, ether(3000));
       await evmMine(startT + 1);
       await vesting.claimTokens(bob, { from: member1 });
@@ -892,7 +942,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
     });
 
     it('should delegate back and forth from an account with 0 balance', async function () {
-      await evmMine(startV);
+      await evmMine(startV + 10);
       let res = await vesting.delegateVotes(member2, { from: member1 });
       let theBlock = res.receipt.blockNumber;
       await time.increase(1);
@@ -918,8 +968,8 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       const secondClaim = res.receipt.blockNumber;
       await time.advanceBlock();
 
-      expect(await vesting.getPriorVotes(member1, secondClaim)).to.be.equal(ether(1000));
-      expect(await vesting.getPriorVotes(member2, secondClaim)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member1, secondClaim)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member2, secondClaim)).to.be.equal(ether(2000));
 
       res = await vesting.delegateVotes(member2, { from: member1 });
       let delegateBlock = res.receipt.blockNumber;
@@ -927,15 +977,15 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
       expect(await vesting.voteDelegations(member1)).to.be.equal(member2);
       expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(0));
-      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(2500));
+      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(3500));
 
       res = await vesting.delegateVotes(member1, { from: member1 });
       delegateBlock = res.receipt.blockNumber;
       await time.increase(1);
 
       expect(await vesting.voteDelegations(member1)).to.be.equal(member1);
-      expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(1000));
-      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member1, delegateBlock)).to.be.equal(ether(1500));
+      expect(await vesting.getPriorVotes(member2, delegateBlock)).to.be.equal(ether(2000));
     });
 
     it('should delegate between non-member addresses', async function () {
