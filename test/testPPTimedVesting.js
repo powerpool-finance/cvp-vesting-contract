@@ -60,10 +60,10 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       durationT,
       amountPerMember,
     );
-    await vesting.initializeMembers([member1, member2, member3]);
+    await vesting.addMembers([member1, member2, member3]);
   });
 
-  describe('initialization', () => {
+  describe('addMembers', () => {
     it('should assign correct values during initialization', async function () {
       expect(await vesting.token()).to.equal(erc20.address);
       expect(await vesting.startV()).to.equal(startV.toString());
@@ -72,7 +72,6 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
       expect(await vesting.durationT()).to.equal(durationT.toString());
       expect(await vesting.endT()).to.equal(endT.toString());
       expect(await vesting.amountPerMember()).to.equal(amountPerMember);
-      expect(await vesting.memberCount()).to.equal('3');
 
       const res = await vesting.members(member1);
       expect(res.active).to.be.true;
@@ -101,15 +100,33 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should deny initialization with an empty member list', async function () {
       const vesting = await PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, amountPerMember);
-      await expect(vesting.initializeMembers([])).to.be.revertedWith('Vesting: Empty member list');
+      await expect(vesting.addMembers([])).to.be.revertedWith('Vesting: Empty member list');
     });
 
-    it('should deny twice members initialization', async function () {
+    it('should allow adding members multiple times', async function () {
       const vesting = await PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, amountPerMember);
-      await vesting.initializeMembers([member1, member2, member3]);
-      await expect(
-        vesting.initializeMembers([member1, member2, member3])
-      ).to.be.revertedWith('Vesting: Already initialized');
+      await vesting.addMembers([member1, member2, member3]);
+      await vesting.addMembers([member4, bob, stub])
+    });
+
+    it('should allow adding the disabled member again', async function () {
+      const vesting = await PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, amountPerMember);
+      await vesting.addMembers([member1, member2, member3]);
+      await erc20.transfer(vesting.address, bnMul(amountPerMember, 3), { from: vault });
+
+      await vesting.renounceMembership({ from: member3 });
+      let res = await vesting.members(member3);
+      expect(res.active).to.be.false;
+
+      await vesting.addMembers([member3, member4, stub])
+      res = await vesting.members(member3);
+      expect(res.active).to.be.true;
+    });
+
+    it('should deny adding the same member twice', async function () {
+      const vesting = await PPTimedVesting.new(erc20.address, startV, durationV, startT, durationT, amountPerMember);
+      await vesting.addMembers([member1, member2, member3]);
+      await expect(vesting.addMembers([member3, bob, stub])).to.be.revertedWith('Vesting: Already active or transferred')
     });
 
     it('should deny initialization with non-erc20 contract address', async function () {
@@ -728,7 +745,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should deny claiming when nothing was assigned', async function () {
       vesting = await PPTimedVesting.new(erc20.address, startV, 10, startT, 15, 5);
-      await vesting.initializeMembers([member1, member2, member3]);
+      await vesting.addMembers([member1, member2, member3]);
       await erc20.mint(vesting.address, ether(3000));
       await evmMine(startT + 2);
       await vesting.claimVotes(member1);
@@ -926,7 +943,7 @@ contract('PPTimedVesting Unit Tests', function ([, member1, member2, member3, me
 
     it('should deny claiming when nothing was assigned', async function () {
       vesting = await PPTimedVesting.new(erc20.address, startV, 5, startT, 10, 5);
-      await vesting.initializeMembers([member1, member2, member3]);
+      await vesting.addMembers([member1, member2, member3]);
       await erc20.mint(vesting.address, ether(3000));
       await evmMine(startT + 1);
       await vesting.claimTokens(bob, { from: member1 });
