@@ -27,8 +27,8 @@ contract PPTimedVesting is CvpInterface, Ownable {
   // @notice Emitted when a member is disabled either by the owner or the by the member itself
   event DisableMember(address indexed member, uint256 tokensRemainder);
 
-  // @notice Emitted once when the contract was deployed
-  event Init(address[] members);
+  // @notice Emitted when a new active member list is added
+  event AddMembers(address[] members);
 
   // @notice Emitted when the owner increases durationT correspondingly increasing the endT timestamp
   event IncreaseDurationT(uint256 prevDurationT, uint256 prevEndT, uint256 newDurationT, uint256 newEndT);
@@ -110,9 +110,6 @@ contract PPTimedVesting is CvpInterface, Ownable {
   /// @notice Start timestamp for token vesting calculations
   uint256 public immutable startT;
 
-  /// @notice Number of the vesting contract members, used only from UI
-  uint256 public memberCount;
-
   /// @notice Amount of ERC20 tokens to distribute during the vesting period
   uint96 public immutable amountPerMember;
 
@@ -174,22 +171,20 @@ contract PPTimedVesting is CvpInterface, Ownable {
   }
 
   /**
-   * @notice Initialize members of vesting
-   * @param _memberList The list of addresses to distribute tokens to
+   * @notice Adds a list of vesting members
+   * @param _listToPush The list of addresses to distribute tokens to
    */
-  function initializeMembers(address[] calldata _memberList) external onlyOwner {
-    require(memberCount == 0, "Vesting: Already initialized");
-
-    uint256 len = _memberList.length;
+  function addMembers(address[] calldata _listToPush) external onlyOwner {
+    uint256 len = _listToPush.length;
     require(len > 0, "Vesting: Empty member list");
 
-    memberCount = len;
-
     for (uint256 i = 0; i < len; i++) {
-      members[_memberList[i]].active = true;
+      Member memory member = members[_listToPush[i]];
+      require(member.active == false && member.transferred == false, "Vesting: Already active or transferred");
+      members[_listToPush[i]].active = true;
     }
 
-    emit Init(_memberList);
+    emit AddMembers(_listToPush);
   }
 
   /**
